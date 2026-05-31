@@ -1,0 +1,92 @@
+# Fire Translator
+
+> Part of [LoPAS Open Translator Core](../LoPAS-Open-Translator-Core)
+
+Translates wildfire and terrain data into common state space.
+
+---
+
+## Data Sources
+
+| Source | Data | Update |
+|--------|------|--------|
+| FIRMS (NASA) | Fire location, intensity, radiative power | Hours |
+| USGS | Terrain slope, elevation, geology | Static / event |
+| Open-Meteo | Wind speed, direction, humidity | 1h |
+
+---
+
+## Schema
+
+```yaml
+meta:
+  translator: fire-translator
+  version: 0.1.0
+  timestamp:
+  lag_seconds:
+  coverage_gap:
+  confidence:
+
+coordinate:
+  lat:
+  lon:
+  timestamp:
+
+sources:
+  - provider: FIRMS
+    update_interval: 3600
+  - provider: USGS
+    update_interval: 86400
+  - provider: Open-Meteo
+    update_interval: 3600
+
+observation:
+  fire_count:             # active fire points in area
+  fire_intensity:         # LOW | MEDIUM | HIGH | EXTREME
+  fire_radiative_power:   # MW
+  terrain_slope_deg:
+  elevation_m:
+  wind_speed_ms:
+  wind_direction_deg:
+  relative_humidity_pct:
+  drought_index:
+
+derived:
+  spread_vector:          # direction of likely spread (degrees)
+  spread_speed:           # estimated km/h
+  ignition_risk:          # 0.0–1.0
+  containment_difficulty: # 0.0–1.0
+  populated_area_risk:    # 0.0–1.0
+
+state:
+  status:                 # SAFE | CAUTION | WARNING | CRITICAL
+  spread_score:           # 0.0–1.0
+  trend:                  # IMPROVING | STABLE | DEGRADING | UNKNOWN
+
+lopas:
+  SCI:    # overall system crisis
+  MCI:    # coherence between fire, wind, terrain signals
+  CPTI:   # phase transition — fire behavior change
+  RAR:    # prediction vs actual spread
+
+action:
+  recommendation:         # MONITOR | PREPARE | EVACUATE
+  confidence:
+```
+
+---
+
+## Async Signal Logic
+
+FIRMS updates in hours. USGS terrain is near-static.  
+When FIRMS detects rapid fire expansion but wind data hasn't updated:
+
+```yaml
+lag_seconds: high
+OSI: elevated
+interpretation: "act on fire data, not wind assumption"
+```
+
+---
+
+## Core schema: [LoPAS-Open-Translator-Core](../LoPAS-Open-Translator-Core)
