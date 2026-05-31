@@ -1,0 +1,101 @@
+# Geo-Maritime Translator
+
+> Part of [LoPAS Open Translator Core](../LoPAS-Open-Translator-Core)
+
+Translates geopolitical events and maritime traffic into common state space.
+
+---
+
+## Data Sources
+
+| Source | Data | Update |
+|--------|------|--------|
+| GDELT | News events, conflict density, sentiment | 15 min |
+| AIS | Vessel positions, route changes, density | Real-time |
+| CMEMS | Sea state, current | 3–6h |
+
+---
+
+## Schema
+
+```yaml
+meta:
+  translator: geo-maritime-translator
+  version: 0.1.0
+  timestamp:
+  lag_seconds:
+  coverage_gap:
+  confidence:
+
+coordinate:
+  lat:
+  lon:
+  timestamp:
+
+sources:
+  - provider: GDELT
+    update_interval: 900    # 15 min
+  - provider: AIS
+    update_interval: 60     # real-time
+  - provider: CMEMS
+    update_interval: 10800
+
+observation:
+  news_density:             # events per region per hour
+  conflict_event_count:
+  vessel_density:           # ships per 100km²
+  route_change_rate:        # % vessels deviating from normal route
+  chokepoint_utilization:   # 0.0–1.0
+
+derived:
+  propagation_velocity:     # speed of event impact spreading (km/h)
+  route_disruption_risk:    # 0.0–1.0
+  chokepoint_pressure:      # 0.0–1.0
+  information_lag:          # gap between AIS behavior and GDELT reporting
+
+state:
+  status:                   # SAFE | CAUTION | WARNING | CRITICAL
+  geopolitics_score:        # 0.0–1.0
+  trend:                    # IMPROVING | STABLE | DEGRADING | UNKNOWN
+
+lopas:
+  G_cog:  # information gravity — where attention concentrates
+  SCI:    # system crisis from conflict / disruption
+  CDI:    # vessel distribution — chokepoint concentration
+  CPTI:   # phase transition — sudden route change signal
+  OSI:    # over-reliance on news vs actual vessel behavior
+
+action:
+  recommendation:           # HOLD | MONITOR | REROUTE | ESCALATE
+  confidence:
+```
+
+---
+
+## Key Signal: AIS before GDELT
+
+The most important pattern this Translator detects:
+
+```yaml
+observation:
+  route_change_rate: high     # vessels are avoiding an area
+  news_density: low           # nothing in the news yet
+
+derived:
+  information_lag: high
+
+lopas:
+  OSI: elevated
+  CPTI: elevated
+
+interpretation: >
+  Ships are moving before the news breaks.
+  This is the earliest geopolitical signal available from open data.
+```
+
+This pattern appeared before multiple Red Sea escalations.  
+It is the open-data equivalent of LoPAS "Observation Space Shock."
+
+---
+
+## Core schema: [LoPAS-Open-Translator-Core](../LoPAS-Open-Translator-Core)
