@@ -1,0 +1,85 @@
+# Eco Translator
+
+> Part of [LoPAS Open Translator Core](../LoPAS-Open-Translator-Core)
+
+Translates ecosystem and biodiversity data into common state space.
+
+---
+
+## Data Sources
+
+| Source | Data | Update |
+|--------|------|--------|
+| GBIF | Species occurrence, biodiversity index | Periodic |
+| Sentinel (ESA) | Vegetation health (NDVI), land use | 5 days |
+| EM-DAT | Disaster frequency, historical impact | Event-driven |
+
+---
+
+## Schema
+
+```yaml
+meta:
+  translator: eco-translator
+  version: 0.1.0
+  timestamp:
+  lag_seconds:
+  coverage_gap:
+  confidence:
+
+coordinate:
+  lat:
+  lon:
+  timestamp:
+
+sources:
+  - provider: GBIF
+    update_interval: 604800   # weekly
+  - provider: Sentinel
+    update_interval: 432000   # 5 days
+  - provider: EM-DAT
+    update_interval: 86400
+
+observation:
+  biodiversity_index:         # species richness score
+  vegetation_health:          # NDVI 0.0–1.0
+  land_use_change_pct:        # % change from baseline
+  disaster_frequency:         # events per year in region
+  invasive_species_presence:  # true/false
+
+derived:
+  resilience:                 # 0.0–1.0
+  habitat_stability:          # 0.0–1.0
+  recovery_capacity:          # 0.0–1.0
+  fragmentation_index:        # habitat connectivity
+
+state:
+  status:                     # SAFE | CAUTION | WARNING | CRITICAL
+  vulnerability_score:        # 0.0–1.0
+  trend:                      # IMPROVING | STABLE | DEGRADING | UNKNOWN
+
+lopas:
+  TRS:    # ecosystem resonance / vitality
+  EFI:    # entropy-fertility — biodiversity as creative diversity
+  AHI:    # adaptive harmony — recovery capacity
+  SCI:    # accumulated disaster stress
+
+action:
+  recommendation:             # MONITOR | PROTECT | RESTORE
+  confidence:
+```
+
+---
+
+## Note on Slow Data
+
+GBIF and EM-DAT update slowly.  
+Sentinel updates every 5 days.  
+High `lag_seconds` here is normal — not an error.
+
+When `coverage_gap: true` alongside `SCI` elevation,  
+it may indicate disaster impact in an unobserved zone.
+
+---
+
+## Core schema: [LoPAS-Open-Translator-Core](../LoPAS-Open-Translator-Core)
