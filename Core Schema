@@ -1,0 +1,46 @@
+# LoPAS Open Translator Core Schema v0.1
+
+meta:
+  translator:       # e.g. ocean-translator
+  version:          # e.g. 0.1.0
+  timestamp:        # ISO 8601
+  lag_seconds:      # seconds since oldest source update
+  coverage_gap:     # true/false
+  source_count:     # number of active sources
+  confidence:       # 0.0–1.0
+  uncertainty:      # 0.0–1.0
+  anomaly:          # true/false
+
+coordinate:
+  lat:
+  lon:
+  timestamp:
+
+sources:
+  - provider:
+    source_id:
+    update_interval:  # seconds
+    confidence:       # 0.0–1.0
+
+observation:
+  # domain-specific raw fields
+  # defined per Translator
+
+derived:
+  # computed fields
+  # defined per Translator
+
+state:
+  status:           # SAFE | CAUTION | WARNING | CRITICAL
+  risk_score:       # 0.0–1.0
+  trend:            # IMPROVING | STABLE | DEGRADING | UNKNOWN
+
+lopas:
+  RAR:              # Reality Alignment Rate
+  SCI:              # System Crisis Index
+  CPTI:             # Cognitive Phase Transition Index
+  # extended per Translator
+
+action:
+  recommendation:   # HOLD | MONITOR | PREPARE | MOVE | ESCALATE
+  confidence:       # 0.0–1.0
