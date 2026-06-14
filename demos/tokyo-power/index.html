@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoPAS Power Translator — Tokyo Node</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;500;600;700;900&display=swap');
+
+:root {
+  --bg:      #06040e;
+  --bg2:     #0c0820;
+  --bg3:     #100d28;
+  --border:  #1e1645;
+  --accent:  #7c3aed;
+  --green:   #00f09a;
+  --warn:    #f0b800;
+  --crit:    #f03050;
+  --elec:    #c084fc;
+  --dim:     #1e1645;
+  --text:    #d4c8f0;
+  --textdim: #3d2d70;
+  --mono:    'Space Mono', monospace;
+  --sans:    'Barlow Condensed', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; }
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(124,58,237,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(124,58,237,.018) 1px,transparent 1px);
+  background-size:48px 48px; pointer-events:none; z-index:0;
+}
+.shell { position:relative; z-index:2; max-width:1080px; margin:0 auto; padding:20px 18px; }
+
+/* LOADING */
+#loading { position:fixed; inset:0; background:var(--bg); z-index:100;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+#loading.hidden { display:none; }
+.loader-ring { width:48px; height:48px; border-radius:50%;
+  border:2px solid var(--dim); border-top-color:var(--elec); animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loader-text { font-family:var(--mono); font-size:10px; color:var(--textdim); letter-spacing:.15em; }
+
+/* HEADER */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding-bottom:14px; margin-bottom:20px;
+  border-bottom:1px solid var(--border); flex-wrap:wrap; gap:10px;
+}
+.logo .sys { font-family:var(--mono); font-size:10px; color:var(--textdim); letter-spacing:.18em; text-transform:uppercase; }
+.logo .name { font-family:var(--mono); font-size:20px; color:var(--elec); letter-spacing:.06em; font-weight:700; }
+.header-right { font-family:var(--mono); font-size:9px; color:var(--textdim); text-align:right; line-height:1.9; }
+.header-right .coord { color:var(--elec); font-size:11px; }
+.dot { display:inline-block; width:6px; height:6px; border-radius:50%; animation:blink 2s ease-in-out infinite; margin-right:4px; }
+.dot-live { background:var(--green); box-shadow:0 0 5px var(--green); }
+.dot-warn { background:var(--warn); box-shadow:0 0 5px var(--warn); }
+.dot-crit { background:var(--crit); box-shadow:0 0 5px var(--crit); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ACTION ZONE */
+.action-zone {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:3px; padding:22px 24px 18px; margin-bottom:14px;
+  position:relative; overflow:hidden; animation:fi .4s ease both;
+}
+.action-zone.stable   { border-top:3px solid var(--green); }
+.action-zone.monitor  { border-top:3px solid var(--warn); }
+.action-zone.caution  { border-top:3px solid var(--elec); }
+.action-zone.critical { border-top:3px solid var(--crit); box-shadow:0 0 30px rgba(240,48,80,.15); }
+
+.action-tag  { font-family:var(--mono); font-size:9px; letter-spacing:.2em; color:var(--textdim); text-transform:uppercase; margin-bottom:4px; }
+.action-verb { font-family:var(--sans); font-size:64px; font-weight:900; line-height:.9; }
+.action-verb.stable   { color:var(--green);  text-shadow:0 0 40px rgba(0,240,154,.2); }
+.action-verb.monitor  { color:var(--warn);   text-shadow:0 0 40px rgba(240,184,0,.25); }
+.action-verb.caution  { color:var(--elec);   text-shadow:0 0 40px rgba(192,132,252,.3); }
+.action-verb.critical { color:var(--crit);   text-shadow:0 0 60px rgba(240,48,80,.5); animation:urgpulse 1.2s ease-in-out infinite; }
+@keyframes urgpulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+
+.action-sub { font-size:16px; font-weight:500; color:var(--text); letter-spacing:.03em; margin-top:6px; }
+.action-reason {
+  font-family:var(--mono); font-size:10px; color:var(--textdim); line-height:1.8;
+  border-top:1px solid var(--border); padding-top:12px; margin-top:14px;
+}
+.hl { color:var(--warn); } .cr { color:var(--crit); } .ok { color:var(--green); } .ac { color:var(--elec); }
+
+.action-meta { display:flex; gap:18px; margin-top:12px; flex-wrap:wrap; }
+.ameta { font-family:var(--mono); font-size:9px; color:var(--textdim); letter-spacing:.1em; }
+.ameta strong { font-size:15px; display:block; margin-top:1px; }
+
+.conf-bar { margin-top:14px; display:flex; align-items:center; gap:10px; }
+.conf-label { font-family:var(--mono); font-size:9px; color:var(--textdim); width:80px; }
+.conf-track { flex:1; height:3px; background:var(--dim); border-radius:2px; }
+.conf-fill  { height:100%; border-radius:2px; transition:width .8s ease; }
+.cf-green { background:var(--green); } .cf-warn { background:var(--warn); }
+.cf-elec  { background:var(--elec); } .cf-crit { background:var(--crit); }
+.conf-num { font-family:var(--mono); font-size:10px; }
+
+/* TRIGGERS */
+.trigger-row { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; animation:fi .4s .08s ease both; }
+.trigger {
+  font-family:var(--mono); font-size:9px; letter-spacing:.08em;
+  padding:5px 11px; border-radius:2px;
+  border:1px solid var(--border); color:var(--textdim); background:var(--bg3);
+  display:flex; align-items:center; gap:6px;
+}
+.trigger.active   { border-color:var(--warn); color:var(--warn); background:rgba(240,184,0,.06); }
+.trigger.hot      { border-color:var(--elec); color:var(--elec); background:rgba(192,132,252,.06); }
+.trigger.critical { border-color:var(--crit); color:var(--crit); background:rgba(240,48,80,.06); }
+.trigger.ok       { border-color:var(--green); color:var(--green); background:rgba(0,240,154,.06); }
+
+/* GRID */
+.body-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+@media(max-width:700px){ .body-grid{ grid-template-columns:1fr; } }
+
+.card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:3px; padding:16px; position:relative; overflow:hidden;
+}
+.card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--elec),transparent); opacity:.2;
+}
+.clabel { font-family:var(--mono); font-size:9px; letter-spacing:.15em; color:var(--textdim); text-transform:uppercase; margin-bottom:10px; }
+.ctitle { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--elec); text-transform:uppercase; margin-bottom:14px; }
+.big-val { font-family:var(--mono); font-size:48px; font-weight:700; line-height:1; }
+
+.row-bar { margin-bottom:8px; }
+.row-bar-head { display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; color:var(--textdim); margin-bottom:3px; }
+.bar-track { height:5px; background:var(--dim); border-radius:2px; overflow:hidden; position:relative; }
+.bar-fill  { height:100%; border-radius:2px; transition:width 1s ease; }
+.bf-green  { background:linear-gradient(90deg,#008855,var(--green)); }
+.bf-elec   { background:linear-gradient(90deg,#3b0070,var(--elec)); }
+.bf-warn   { background:linear-gradient(90deg,#887700,var(--warn)); }
+.bf-crit   { background:linear-gradient(90deg,#881000,var(--crit)); }
+.bf-blue   { background:linear-gradient(90deg,#005577,#00c8f0); }
+
+.ind-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.ind { background:var(--bg3); border:1px solid var(--border); border-radius:2px; padding:10px 12px; }
+.ind-name { font-family:var(--mono); font-size:9px; color:var(--textdim); letter-spacing:.1em; margin-bottom:3px; }
+.ind-val  { font-family:var(--mono); font-size:26px; font-weight:700; line-height:1; transition:color .5s; }
+.ind-desc { font-size:10px; color:var(--textdim); margin-top:3px; }
+.ind-bar  { height:2px; border-radius:1px; margin-top:6px; transition:width .8s ease; }
+
+.phase-segs { display:flex; gap:4px; margin:10px 0 8px; }
+.pseg {
+  flex:1; height:26px; border-radius:2px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:8px; letter-spacing:.05em;
+  color:var(--textdim); background:var(--bg3); border:1px solid var(--border); transition:all .5s;
+}
+.pseg.past   { border-color:rgba(0,240,154,.25); color:rgba(0,240,154,.4); background:rgba(0,240,154,.04); }
+.pseg.active { border-color:var(--elec); color:var(--elec); background:rgba(124,58,237,.1); box-shadow:0 0 8px rgba(124,58,237,.15); }
+.pseg.near   { border-color:rgba(240,184,0,.4); color:rgba(240,184,0,.6); }
+
+.pst-row { display:flex; gap:20px; margin-top:6px; }
+.pst-item { font-family:var(--mono); font-size:9px; color:var(--textdim); }
+.pst-item strong { display:block; font-size:16px; margin-top:1px; }
+
+.src-tbl { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:10px; }
+.src-tbl th { text-align:left; color:var(--textdim); font-weight:400; letter-spacing:.1em; padding:4px 0 8px; border-bottom:1px solid var(--border); }
+.src-tbl td { padding:7px 6px 7px 0; border-bottom:1px solid rgba(30,22,69,.5); }
+.sdot { display:inline-block; width:5px; height:5px; border-radius:50%; margin-right:5px; }
+.sdot-ok  { background:var(--green); box-shadow:0 0 3px var(--green); }
+.sdot-lag { background:var(--warn); }
+.sdot-sim { background:var(--elec); }
+
+.spark-wrap { margin-top:14px; }
+canvas.spark { width:100%; height:58px; display:block; }
+.spark-foot { display:flex; justify-content:space-between; font-family:var(--mono); font-size:8px; color:var(--textdim); margin-top:3px; }
+
+/* INFERENCE RESOURCE TRACKER */
+.inference-card { border-top:3px solid var(--crit); box-shadow:0 0 26px rgba(240,48,80,.08); }
+.infer-meter-grid { display:grid; grid-template-columns:1.1fr 1fr 1fr; gap:14px; margin-bottom:14px; }
+.infer-meter { background:var(--bg3); border:1px solid var(--border); border-radius:2px; padding:12px; min-width:0; }
+.infer-label { font-family:var(--mono); font-size:9px; color:var(--textdim); letter-spacing:.12em; margin-bottom:4px; }
+.infer-sub { font-family:var(--mono); font-size:9px; color:var(--textdim); line-height:1.7; }
+.infer-split { display:grid; grid-template-columns:minmax(280px,.9fr) minmax(320px,1.1fr); gap:14px; align-items:stretch; }
+.infer-canvas-wrap { background:var(--bg3); border:1px solid var(--border); border-radius:2px; padding:10px; }
+#inference-canvas { width:100%; height:170px; display:block; background:rgba(0,0,0,.12); border:1px solid var(--border); border-radius:2px; }
+.infer-equation { margin-top:8px; font-family:var(--mono); font-size:9px; color:var(--textdim); line-height:1.8; border-top:1px solid var(--border); padding-top:8px; }
+@media(max-width:780px){ .infer-meter-grid,.infer-split{ grid-template-columns:1fr; } }
+
+footer {
+  margin-top:20px; padding-top:12px; border-top:1px solid var(--border);
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;
+  font-family:var(--mono); font-size:8px; color:var(--textdim);
+}
+#refresh-btn {
+  font-family:var(--mono); font-size:9px; letter-spacing:.1em;
+  padding:5px 12px; border-radius:2px;
+  border:1px solid var(--border); color:var(--textdim); background:var(--bg3);
+  cursor:pointer; transition:all .2s;
+}
+#refresh-btn:hover { border-color:var(--elec); color:var(--elec); }
+
+.body-grid .card:nth-child(1){ animation:fi .4s .14s ease both; }
+.body-grid .card:nth-child(2){ animation:fi .4s .18s ease both; }
+.body-grid .card:nth-child(3){ animation:fi .4s .22s ease both; }
+.body-grid .card:nth-child(4){ animation:fi .4s .26s ease both; }
+@keyframes fi { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="load-msg">東京グリッド観測 初期化中 …</div>
+</div>
+
+<div class="shell">
+<header>
+  <div class="logo">
+    <div class="sys">LoPAS / Power Grid Translator v0.1 — Live Node</div>
+    <div class="name">TOKYO OBSERVER</div>
+  </div>
+  <div class="header-right">
+    <span class="dot dot-live" id="status-dot"></span><span id="status-label">LIVE</span> &nbsp;|&nbsp;
+    <span class="coord">35.68°N &nbsp;139.69°E — Tokyo, JP</span><br>
+    <span id="ts">—</span><br>
+    <span id="weather-line">気象データ取得中…</span> &nbsp;|&nbsp;
+    <button id="refresh-btn" onclick="init()">↻ 更新</button>
+  </div>
+</header>
+
+<!-- ACTION ZONE -->
+<div class="action-zone monitor" id="action-zone">
+  <div class="action-tag">→ recommended action / グリッド診断</div>
+  <div class="action-verb monitor" id="action-verb">—</div>
+  <div class="action-sub" id="action-sub">気象・電力データ取得中…</div>
+  <div class="action-meta" id="action-meta"></div>
+  <div class="action-reason" id="action-reason"></div>
+  <div class="conf-bar">
+    <div class="conf-label">CONFIDENCE</div>
+    <div class="conf-track"><div class="conf-fill cf-elec" id="conf-fill" style="width:0%"></div></div>
+    <div class="conf-num" id="conf-num">—</div>
+  </div>
+</div>
+
+<!-- INFERENCE RESOURCE TRACKER -->
+<div class="card inference-card" style="animation:fi .4s .10s ease both; margin-bottom:14px;">
+  <div class="clabel">lopas · inference suite → physical resource boundary / AI電力消費推算</div>
+  <div class="ctitle">AI Inference Resource Tracker</div>
+  <div class="infer-meter-grid">
+    <div class="infer-meter">
+      <div class="infer-label">GENERATED TOKENS</div>
+      <div class="big-val" id="inf-tokens" style="color:var(--elec)">0</div>
+      <div class="infer-sub">T<sub>gen</sub> · thought-space volume</div>
+    </div>
+    <div class="infer-meter">
+      <div class="infer-label">POWER</div>
+      <div class="big-val" id="inf-wh" style="font-size:34px;color:var(--crit)">0.00 Wh</div>
+      <div class="infer-sub">E<sub>total</sub> · Joule → Wh</div>
+    </div>
+    <div class="infer-meter">
+      <div class="infer-label">COST / CO2</div>
+      <div class="big-val" id="inf-cost" style="font-size:30px;color:var(--warn)">¥0.00</div>
+      <div class="infer-sub" id="inf-co2">0.000 gCO2 proxy</div>
+    </div>
+  </div>
+  <div class="infer-split">
+    <div>
+      <div class="row-bar">
+        <div class="row-bar-head"><span>BCDI-1 · 分岐認識幅（グリッド負荷分散）</span><span id="inf-bcdi1" style="color:var(--elec)">0.00</span></div>
+        <div class="bar-track"><div class="bar-fill bf-elec" id="bar-bcdi1" style="width:0%"></div></div>
+      </div>
+      <div class="row-bar">
+        <div class="row-bar-head"><span>BCDI-2 · ケース分化（需要パターン分岐）</span><span id="inf-bcdi2" style="color:var(--elec)">0.00</span></div>
+        <div class="bar-track"><div class="bar-fill bf-elec" id="bar-bcdi2" style="width:0%"></div></div>
+      </div>
+      <div class="row-bar">
+        <div class="row-bar-head"><span>CII · 因果推論深度</span><span id="inf-cii" style="color:var(--warn)">0.00</span></div>
+        <div class="bar-track"><div class="bar-fill bf-warn" id="bar-cii" style="width:0%"></div></div>
+      </div>
+      <div class="row-bar">
+        <div class="row-bar-head"><span>LPI · 潜在可能性指数</span><span id="inf-lpi" style="color:var(--warn)">0.00</span></div>
+        <div class="bar-track"><div class="bar-fill bf-warn" id="bar-lpi" style="width:0%"></div></div>
+      </div>
+      <div class="row-bar">
+        <div class="row-bar-head"><span>RII · 逆推論強度</span><span id="inf-rii" style="color:var(--warn)">0.00</span></div>
+        <div class="bar-track"><div class="bar-fill bf-warn" id="bar-rii" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="infer-canvas-wrap">
+      <div class="clabel" style="margin-bottom:4px">思考樹 Shikou Tree · BCDI幅 × CII/LPI/RII深度</div>
+      <canvas id="inference-canvas"></canvas>
+      <div class="infer-equation" id="inf-note">LoPASベクトル待機中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- TRIGGERS -->
+<div class="trigger-row" id="trigger-row"></div>
+
+<!-- BODY -->
+<div class="body-grid">
+
+  <!-- CARD 1: 電力需要 + 気温 -->
+  <div class="card">
+    <div class="clabel">observation · power demand + thermal load</div>
+    <div class="ctitle">グリッド負荷状態</div>
+    <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim);margin-bottom:2px">気温 TEMP</div>
+        <div class="big-val" id="temp-val" style="color:var(--warn)">—</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim)">東京 / Open-Meteo</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim);margin-bottom:2px">冷却負荷指数 CLI</div>
+        <div class="big-val" id="cli-val" style="font-size:34px;color:var(--elec)">—</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim)">Cooling Load Index</div>
+      </div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>気温負荷圧（対35°C基準）</span><span id="temp-bar-val" style="color:var(--warn)">—</span></div>
+      <div class="bar-track"><div class="bar-fill bf-warn" id="bar-temp" style="width:0%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>湿度 冷却コスト（相対）</span><span id="humid-val" style="color:var(--elec)">—</span></div>
+      <div class="bar-track"><div class="bar-fill bf-elec" id="bar-humid" style="width:0%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>AI-DC需要推定（東京圏 推算）</span><span id="dc-demand-val" style="color:var(--crit)">—</span></div>
+      <div class="bar-track"><div class="bar-fill bf-crit" id="bar-dc-demand" style="width:0%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>グリッドストレス推定</span><span id="grid-stress-val" style="color:var(--warn)">—</span></div>
+      <div class="bar-track" style="position:relative;height:5px">
+        <div class="bar-fill bf-warn" id="bar-grid-stress" style="width:0%;height:100%"></div>
+        <div style="position:absolute;top:-3px;left:75%;width:1px;height:11px;background:var(--crit);opacity:.8"></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:1.9;
+      padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:2px;" id="grid-hgd">
+      フィールドデータ取得中…
+    </div>
+    <div class="spark-wrap">
+      <div class="clabel" style="margin-bottom:4px;margin-top:14px">気温トレンド — 24時間</div>
+      <canvas class="spark" id="spark-temp"></canvas>
+      <div class="spark-foot" id="spark-foot-temp"></div>
+    </div>
+  </div>
+
+  <!-- CARD 2: LoPAS指標 -->
+  <div class="card">
+    <div class="clabel">lopas · core indicators / コア指標</div>
+    <div class="ctitle">System State</div>
+    <div class="ind-grid">
+      <div class="ind">
+        <div class="ind-name">SCI — グリッド逼迫度</div>
+        <div class="ind-val" id="sci-val" style="color:var(--warn)">—</div>
+        <div class="ind-desc" id="sci-desc">取得中</div>
+        <div class="ind-bar bf-warn" id="bar-sci" style="width:0%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">TRS — 需給共鳴</div>
+        <div class="ind-val" id="trs-val" style="color:var(--green)">—</div>
+        <div class="ind-desc" id="trs-desc">取得中</div>
+        <div class="ind-bar bf-green" id="bar-trs" style="width:0%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">RAR — 予測整合</div>
+        <div class="ind-val" id="rar-val" style="color:var(--elec)">—</div>
+        <div class="ind-desc" id="rar-desc">取得中</div>
+        <div class="ind-bar bf-elec" id="bar-rar" style="width:0%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">CPTI — 遷移圧力</div>
+        <div class="ind-val" id="cpti-val" style="color:var(--warn)">—</div>
+        <div class="ind-desc" id="cpti-desc">取得中</div>
+        <div class="ind-bar bf-warn" id="bar-cpti" style="width:0%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">OSI — 観測ズレ</div>
+        <div class="ind-val" id="osi-val" style="color:var(--green)">—</div>
+        <div class="ind-desc" id="osi-desc">取得中</div>
+        <div class="ind-bar bf-green" id="bar-osi" style="width:0%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">MCI — 信号整合</div>
+        <div class="ind-val" id="mci-val" style="color:var(--elec)">—</div>
+        <div class="ind-desc" id="mci-desc">取得中</div>
+        <div class="ind-bar bf-elec" id="bar-mci" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD 3: フェーズ遷移 -->
+  <div class="card">
+    <div class="clabel">lptm · phase transition model / 電力フェーズ遷移</div>
+    <div class="ctitle">Phase Band</div>
+    <div class="phase-segs">
+      <div class="pseg past"  id="phase-stable">STABLE</div>
+      <div class="pseg"       id="phase-drift">DRIFT</div>
+      <div class="pseg near"  id="phase-stress">STRESS</div>
+      <div class="pseg"       id="phase-cob">COB</div>
+      <div class="pseg"       id="phase-crit">CRITICAL</div>
+    </div>
+    <div class="pst-row">
+      <div class="pst-item">PST<strong id="pst-val" style="color:var(--elec)">—</strong></div>
+      <div class="pst-item">δPST<strong id="dpst-val" style="color:var(--warn)">—</strong></div>
+      <div class="pst-item">δ²PST<strong id="d2pst-val" style="color:var(--textdim)">—</strong></div>
+      <div class="pst-item">LAYER<strong id="layer-val" style="color:var(--elec)">—</strong></div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="row-bar">
+        <div class="row-bar-head">
+          <span>PST position</span><span style="color:var(--crit)">COB閾値 @ 0.70</span>
+        </div>
+        <div class="bar-track" style="position:relative;height:5px">
+          <div class="bar-fill bf-elec" id="bar-pst" style="width:0%;height:100%"></div>
+          <div style="position:absolute;top:-3px;left:70%;width:1px;height:11px;background:var(--crit);opacity:.8"></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:2;">
+      DRIFT → <span style="color:var(--warn)">需要監視強化・増設計画発動</span><br>
+      STRESS → <span style="color:var(--elec)">契約審査・優先割当</span><br>
+      COB → <span style="color:var(--crit)">受け入れ停止検討・緊急調整</span>
+    </div>
+  </div>
+
+  <!-- CARD 4: データソース -->
+  <div class="card">
+    <div class="clabel">data sources · active feeds</div>
+    <div class="ctitle">Signal Origin</div>
+    <table class="src-tbl">
+      <thead>
+        <tr><th>Provider</th><th>Data type</th><th>Layer</th><th>Lag</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="sdot sdot-ok"></span>Open-Meteo</td>
+          <td>気温・湿度・気圧</td>
+          <td style="color:var(--green)">LIVE</td>
+          <td style="color:var(--green)" id="lag-meteo">—</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-sim"></span>OCCTO推算</td>
+          <td>東京電力エリア需給</td>
+          <td style="color:var(--elec)">DERIVED</td>
+          <td style="color:var(--elec)">モデル</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-sim"></span>AI-Load Translator</td>
+          <td>DCクラスタ負荷推算</td>
+          <td style="color:var(--elec)">DERIVED</td>
+          <td style="color:var(--elec)">リアルタイム</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-sim"></span>LoPAS-CCI</td>
+          <td>インフラ接続密度</td>
+          <td style="color:var(--elec)">FRAMEWORK</td>
+          <td style="color:var(--elec)">同期</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-lag"></span>RSOF-Macro</td>
+          <td>資本再接続観測</td>
+          <td style="color:var(--warn)">LINKED</td>
+          <td style="color:var(--warn)">日次</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:1.9;
+      border-top:1px solid var(--border);padding-top:10px;">
+      LIVE feeds: <span style="color:var(--green)">1 active (Open-Meteo)</span>
+      &nbsp;·&nbsp; DERIVED: <span style="color:var(--elec)">3 active</span><br>
+      AI-Load Translation: <span style="color:var(--elec)">有効</span>
+      &nbsp;·&nbsp; Anomaly flag: <span id="anomaly-flag" style="color:var(--warn)">—</span>
+      &nbsp;·&nbsp; Confidence: <span id="conf-display" style="color:var(--green)">—</span>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>LoPAS Power Grid Translator v0.1 — Tokyo Node — <em>気象データLIVE / 電力推算はモデル値</em></span>
+  <span>AI Load Translator · RSOF-Macro · LoPAS-CCI · PFS v0.3 · LPTM v2</span>
+</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const fmt2 = (n,d=2) => Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+
+// ── INFERENCE SUITE CONSTANTS ──
+const INF_CONST = {
+  J_PER_TOKEN: 0.072,
+  JPY_PER_KWH: 31.0,        // 東京電力 電灯料金プロキシ
+  GCO2_PER_WH: 0.43,        // 東電エリア CO2排出係数 gCO2/Wh
+  BASE_TOKENS: 128,
+  DEPTH_EXP: 2.85
+};
+let INF_ACC_TOKENS = 0;
+let INF_ACC_JOULES = 0;
+
+// ── WEATHER STATE ──
+let W = { temp:25, humidity:60, windspeed:3, weathercode:0, temp24h:[], fetchedAt: null };
+
+// ── LoPAS METRICS ──
+let M = { SCI:0.40, CPTI:0.50, OSI:0.12, MCI:0.65, RAR:0.72, PST:0.35 };
+
+// ── FETCH WEATHER (Open-Meteo) ──
+async function fetchWeather() {
+  const t0 = Date.now();
+  // 東京座標: 35.68°N, 139.69°E
+  const url = 'https://api.open-meteo.com/v1/forecast' +
+    '?latitude=35.68&longitude=139.69' +
+    '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code' +
+    '&hourly=temperature_2m&timezone=Asia/Tokyo&forecast_days=1';
+  const res = await fetch(url);
+  const d = await res.json();
+  const lag = ((Date.now()-t0)/1000).toFixed(1)+'s';
+  $('lag-meteo').textContent = lag;
+
+  W.temp        = d.current.temperature_2m;
+  W.humidity    = d.current.relative_humidity_2m;
+  W.windspeed   = d.current.wind_speed_10m;
+  W.weathercode = d.current.weather_code;
+  W.temp24h     = d.hourly.temperature_2m.slice(0,24);
+  W.fetchedAt   = new Date();
+
+  const wDesc = weatherDesc(W.weathercode);
+  $('weather-line').textContent = `${W.temp}°C · ${W.humidity}% · ${wDesc} · ${W.windspeed}m/s`;
+}
+
+function weatherDesc(code) {
+  if(code === 0) return '晴天';
+  if(code <= 3)  return '曇り';
+  if(code <= 48) return '霧';
+  if(code <= 67) return '雨';
+  if(code <= 77) return '雪';
+  if(code <= 82) return 'にわか雨';
+  return '雷雨';
+}
+
+// ── DERIVE LoPAS METRICS FROM WEATHER + AI LOAD ──
+function deriveLoPAS() {
+  // SCI: グリッド逼迫度
+  // 高温 + 高湿度 + 夏 → DC冷却負荷増大 → グリッド逼迫
+  const tempNorm   = clamp((W.temp - 15) / 25, 0, 1);   // 15°C基準、40°Cで1.0
+  const humidNorm  = clamp((W.humidity - 40) / 60, 0, 1);
+  const hour = W.fetchedAt ? W.fetchedAt.getHours() : new Date().getHours();
+  const peakHour = (hour >= 13 && hour <= 17) ? 1.0 : (hour >= 9 && hour <= 21) ? 0.65 : 0.30;
+  // AI DCは24h稼働、ピーク時に冷却需要追加
+  const aiBaseLoad = 0.38; // 東京圏AIデータセンター推定定常負荷
+  M.SCI  = clamp(0.20 + tempNorm*0.35 + humidNorm*0.15 + peakHour*0.18 + aiBaseLoad*0.12, 0.10, 0.95);
+
+  // CPTI: 需要遷移圧力
+  // 夏季移行・AI需要急増フェーズ
+  M.CPTI = clamp(0.30 + tempNorm*0.30 + M.SCI*0.25 + 0.05*(Math.random()-.5), 0.10, 0.90);
+
+  // OSI: 観測ズレ（予測 vs 実績の乖離）
+  // 天気変化が激しいほど予測が外れる
+  const wVolatility = (W.weathercode > 50) ? 0.28 : 0.10;
+  M.OSI  = clamp(0.08 + wVolatility + 0.04*(Math.random()-.5), 0.05, 0.50);
+
+  // MCI: 信号整合性
+  M.MCI  = clamp(0.85 - M.OSI*0.4 - 0.05*(Math.random()), 0.40, 0.90);
+
+  // RAR: 予測整合
+  M.RAR  = clamp(0.90 - M.CPTI*0.25 - M.OSI*0.20, 0.40, 0.90);
+
+  // PST: フェーズ遷移スコア
+  M.PST  = clamp(M.SCI*0.5 + M.CPTI*0.3 + M.OSI*0.2, 0.05, 0.95);
+}
+
+// ── COMPUTE AI LOAD (DC需要推算) ──
+function computeAILoad() {
+  // 東京圏AIデータセンター推算: 現状約3,000MW相当（2026年推定）
+  // 冷却負荷は気温に比例
+  const baseMW = 3000;
+  const tempFactor = 1 + clamp((W.temp - 20) / 20, 0, 0.5); // 20°Cで1.0, 40°Cで1.5
+  const effectiveMW = Math.round(baseMW * tempFactor);
+  const gridCapacity = 52000; // 東京電力エリア最大容量MW（概算）
+  const stressPct = clamp(effectiveMW / gridCapacity * 100, 0, 100);
+  return { effectiveMW, gridCapacity, stressPct };
+}
+
+// ── DERIVE INFERENCE SUITE ──
+function deriveInferenceSuite(m) {
+  const SCI  = clamp(m.SCI,  0,1);
+  const CPTI = clamp(m.CPTI, 0,1);
+  const OSI  = clamp(m.OSI,  0,1);
+  const MCI  = clamp(m.MCI,  0,1);
+  const RAR  = clamp(m.RAR,  0,1);
+  const PST  = clamp(m.PST,  0,1);
+
+  const BCDI1 = clamp(0.20 + SCI*0.48  + CPTI*0.22 + OSI*0.10, 0.05, 1);
+  const BCDI2 = clamp(0.18 + CPTI*0.42 + MCI*0.22  + OSI*0.18, 0.05, 1);
+  const CII   = clamp(0.20 + MCI*0.35  + RAR*0.25  + CPTI*0.20, 0.05, 1);
+  const LPI   = clamp(0.15 + PST*0.45  + SCI*0.25  + OSI*0.15, 0.05, 1);
+  const RII   = clamp(0.15 + RAR*0.35  + CPTI*0.30 + SCI*0.20, 0.05, 1);
+  return { BCDI1, BCDI2, CII, LPI, RII, OSI };
+}
+
+function updateInferenceSuite() {
+  const s = deriveInferenceSuite(M);
+  const widthFactor  = Math.max(1, (s.BCDI1*10) * (s.BCDI2*10));
+  const depthFactor  = s.CII * s.LPI * s.RII;
+  const cycleTokens  = Math.round(INF_CONST.BASE_TOKENS * widthFactor * Math.exp(depthFactor * INF_CONST.DEPTH_EXP) * (1+s.OSI));
+  const cycleJoules  = cycleTokens * INF_CONST.J_PER_TOKEN * (1+s.OSI);
+
+  INF_ACC_TOKENS += cycleTokens;
+  INF_ACC_JOULES += cycleJoules;
+
+  const accWh   = INF_ACC_JOULES / 3600;
+  const accCost = (accWh / 1000) * INF_CONST.JPY_PER_KWH;
+  const accCo2  = accWh * INF_CONST.GCO2_PER_WH;
+
+  $('inf-tokens').textContent = INF_ACC_TOKENS.toLocaleString();
+  $('inf-wh').textContent     = fmt2(accWh) + ' Wh';
+  $('inf-cost').textContent   = '¥' + fmt2(accCost, 4);
+  $('inf-co2').textContent    = fmt2(accCo2, 3) + ' gCO2 proxy';
+
+  const setBar = (id, v) => { const el=$(id); if(el) el.style.width = clamp(v*100,0,100)+'%'; };
+  const setVal = (id, v) => { const el=$(id); if(el) el.textContent = fmt2(v); };
+
+  setVal('inf-bcdi1', s.BCDI1); setBar('bar-bcdi1', s.BCDI1);
+  setVal('inf-bcdi2', s.BCDI2); setBar('bar-bcdi2', s.BCDI2);
+  setVal('inf-cii',   s.CII);   setBar('bar-cii',   s.CII);
+  setVal('inf-lpi',   s.LPI);   setBar('bar-lpi',   s.LPI);
+  setVal('inf-rii',   s.RII);   setBar('bar-rii',   s.RII);
+
+  const note = $('inf-note');
+  if(note) note.innerHTML =
+    `T<sub>gen</sub> = BASE×(BCDI<sub>1</sub>×10 × BCDI<sub>2</sub>×10)×exp((CII×LPI×RII)×${INF_CONST.DEPTH_EXP})×(1+OSI)<br>` +
+    `E<sub>total</sub> = T<sub>gen</sub> × ${INF_CONST.J_PER_TOKEN} J/token × (1+OSI) · last cycle <span style="color:var(--elec)">${cycleTokens.toLocaleString()} tokens</span>`;
+
+  drawInferenceTree(s, cycleTokens);
+}
+
+function drawInferenceTree(s, cycleTokens) {
+  const canvas = $('inference-canvas');
+  if(!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W2 = canvas.offsetWidth || 600;
+  const H  = canvas.offsetHeight || 170;
+  canvas.width = W2*dpr; canvas.height = H*dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W2,H);
+
+  const branches = Math.round(clamp(3 + s.BCDI1*s.BCDI2*32, 3, 34));
+  const depth    = clamp(s.CII*s.LPI*s.RII*2.4, .12, 1);
+  const hot      = cycleTokens > 4000 || depth > .62;
+
+  // grid
+  ctx.strokeStyle = 'rgba(124,58,237,.08)';
+  ctx.lineWidth = 1;
+  for(let x=0;x<W2;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=32){  ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W2,y); ctx.stroke(); }
+
+  const rootX = W2/2, rootY = 14;
+  const endYBase = 42 + depth*(H-58);
+  ctx.strokeStyle = hot ? 'rgba(240,48,80,.46)' : 'rgba(192,132,252,.40)';
+  ctx.fillStyle   = hot ? 'rgba(240,48,80,.85)' : 'rgba(192,132,252,.85)';
+  ctx.lineWidth   = 1;
+
+  for(let i=0;i<branches;i++){
+    const t  = branches===1 ? .5 : i/(branches-1);
+    const eX = 16 + t*(W2-32);
+    const jitter = (Math.random()-.5)*16*(1+s.OSI);
+    const eY = endYBase + (Math.random()*10);
+    const mX = rootX + (eX-rootX)*.48 + jitter;
+    const mY = rootY + (eY-rootY)*.46;
+    ctx.beginPath(); ctx.moveTo(rootX, rootY);
+    ctx.bezierCurveTo(rootX, mY*.72, mX, mY, eX, eY); ctx.stroke();
+    ctx.beginPath(); ctx.arc(eX, eY, hot?2.4:2, 0, Math.PI*2); ctx.fill();
+    if(depth > .45 && i%2===0){
+      const lX = eX+(Math.random()-.5)*22;
+      const lY = Math.min(H-8, eY+12+Math.random()*20);
+      ctx.beginPath(); ctx.moveTo(eX,eY); ctx.lineTo(lX,lY); ctx.stroke();
+      ctx.beginPath(); ctx.arc(lX,lY,1.5,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.font = '9px Space Mono,monospace';
+  ctx.fillStyle = hot ? 'rgba(240,48,80,.9)' : 'rgba(192,132,252,.85)';
+  ctx.fillText(`branches:${branches}  depth:${depth.toFixed(2)}  cycle:${cycleTokens.toLocaleString()} tokens`, 8, H-8);
+}
+
+// ── UPDATE ALL UI ──
+function updateUI() {
+  deriveLoPAS();
+  const ai = computeAILoad();
+
+  // --- 気温・負荷バー ---
+  const tempPct  = clamp((W.temp/40)*100, 0, 100);
+  const humidPct = clamp(W.humidity, 0, 100);
+  const dcPct    = clamp(ai.stressPct * 2, 0, 100); // 強調表示
+
+  $('temp-val').textContent      = W.temp + '°C';
+  $('temp-bar-val').textContent  = W.temp + '°C';
+  $('cli-val').textContent       = fmt2(M.SCI);
+  $('humid-val').textContent     = W.humidity + '%';
+  $('dc-demand-val').textContent = ai.effectiveMW.toLocaleString() + ' MW推算';
+  $('grid-stress-val').textContent = fmt2(M.SCI);
+
+  $('bar-temp').style.width       = tempPct + '%';
+  $('bar-humid').style.width      = humidPct + '%';
+  $('bar-dc-demand').style.width  = dcPct + '%';
+  $('bar-grid-stress').style.width = clamp(M.SCI*100, 0, 100) + '%';
+
+  // 色変更 気温
+  $('temp-val').style.color = W.temp >= 35 ? 'var(--crit)' : W.temp >= 28 ? 'var(--warn)' : 'var(--green)';
+
+  // HGD表示
+  const hgdVal = (M.SCI*0.8 - 0.52).toFixed(2);
+  const hgdBand = M.SCI > 0.65 ? '<span style="color:var(--crit);background:rgba(240,48,80,.08);border:1px solid var(--crit);padding:1px 6px;border-radius:2px">STRESSED</span>'
+                : M.SCI > 0.45 ? '<span style="color:var(--warn);background:rgba(240,184,0,.08);border:1px solid var(--warn);padding:1px 6px;border-radius:2px">ELEVATED</span>'
+                : '<span style="color:var(--green);background:rgba(0,240,154,.08);border:1px solid var(--green);padding:1px 6px;border-radius:2px">BALANCED</span>';
+  $('grid-hgd').innerHTML = `CLI×HGD = (${fmt2(M.SCI*0.8,2)} × ${fmt2(M.RAR,2)}) − 0.52 = <strong style="color:var(--elec)">${hgdVal}</strong> &nbsp;${hgdBand}<br>` +
+    `<span style="color:var(--textdim)">AI-DC推算 ${ai.effectiveMW.toLocaleString()}MW / グリッド容量 ${(ai.gridCapacity/1000).toFixed(0)}GW · 負荷率 ${fmt2(ai.stressPct,1)}%</span>`;
+
+  // --- LoPAS指標 ---
+  const setInd = (id, barId, descId, v, desc, color) => {
+    $(id).textContent   = fmt2(v);
+    $(id).style.color   = color;
+    $(barId).style.width = clamp(v*100,0,100)+'%';
+    if(descId && $(descId)) $(descId).textContent = desc;
+  };
+  setInd('sci-val',  'bar-sci',  'sci-desc',  M.SCI,
+    M.SCI>0.65?'高逼迫・警戒':M.SCI>0.45?'上昇中':'安定',
+    M.SCI>0.65?'var(--crit)':M.SCI>0.45?'var(--warn)':'var(--green)');
+  setInd('trs-val',  'bar-trs',  'trs-desc',  clamp(1-M.SCI+0.2,0.2,0.9),
+    '需給共鳴スコア', 'var(--green)');
+  setInd('rar-val',  'bar-rar',  'rar-desc',  M.RAR,
+    '予測追従中', 'var(--elec)');
+  setInd('cpti-val', 'bar-cpti', 'cpti-desc', M.CPTI,
+    M.CPTI>0.6?'遷移リスク↑':'推移安定', M.CPTI>0.6?'var(--warn)':'var(--elec)');
+  setInd('osi-val',  'bar-osi',  'osi-desc',  M.OSI,
+    M.OSI>0.3?'予測乖離大':'低・データ新鮮', M.OSI>0.3?'var(--warn)':'var(--green)');
+  setInd('mci-val',  'bar-mci',  'mci-desc',  M.MCI,
+    'シグナル整合', 'var(--elec)');
+
+  // --- フェーズ遷移 ---
+  const dPST  = (M.PST - 0.35 + (Math.random()-.5)*0.01);
+  const d2PST = ((Math.random()-.5)*0.005);
+  $('pst-val').textContent  = fmt2(M.PST);
+  $('dpst-val').textContent = (dPST>=0?'+':'')+fmt2(dPST,3);
+  $('d2pst-val').textContent= (d2PST>=0?'+':'')+fmt2(d2PST,4);
+
+  const phases = ['phase-stable','phase-drift','phase-stress','phase-cob','phase-crit'];
+  phases.forEach(id => {
+    const el = $(id);
+    el.className = 'pseg';
+    if(id==='phase-cob' || id==='phase-crit') el.className += ' near';
+  });
+  let activePhase;
+  if(M.PST < 0.30)      activePhase = 'phase-stable';
+  else if(M.PST < 0.50) activePhase = 'phase-drift';
+  else if(M.PST < 0.70) activePhase = 'phase-stress';
+  else if(M.PST < 0.85) activePhase = 'phase-cob';
+  else                  activePhase = 'phase-crit';
+
+  const phaseOrder = ['phase-stable','phase-drift','phase-stress','phase-cob','phase-crit'];
+  const activeIdx  = phaseOrder.indexOf(activePhase);
+  phaseOrder.forEach((id,i) => {
+    const el = $(id);
+    if(i < activeIdx) el.className = 'pseg past';
+    else if(i === activeIdx) el.className = 'pseg active';
+    else el.className = 'pseg near';
+  });
+  $('layer-val').textContent = activeIdx <= 1 ? 'L1→L2' : activeIdx <= 3 ? 'L2→L3' : 'L3+';
+  $('bar-pst').style.width = clamp(M.PST*100,0,100)+'%';
+
+  // --- アクション判定 ---
+  let verb, cls, sub, reason, confVal, confCls;
+  if(M.PST < 0.30) {
+    verb='STABLE'; cls='stable';
+    sub='グリッド安定。通常運用継続。';
+    reason=`気温 <span class="ok">${W.temp}°C</span> · CLI <span class="ok">${fmt2(M.SCI)}</span> 正常範囲 · AI-DC負荷 <span class="ok">${ai.effectiveMW.toLocaleString()}MW</span> 通常水準<br>IF CLI > 0.45 → <span class="hl">MONITOR</span>`;
+    confVal=0.88; confCls='cf-green';
+  } else if(M.PST < 0.50) {
+    verb='MONITOR'; cls='monitor';
+    sub='需要上昇トレンド。観測サイクル強化。';
+    reason=`CLI <span class="hl">${fmt2(M.SCI)}</span> 上昇中 · 気温 <span class="hl">${W.temp}°C</span> · AI-DC冷却負荷 追加 <span class="hl">${Math.round(ai.effectiveMW*0.15)}MW推算</span><br>IF CLI > 0.65 → <span class="cr">CAUTION</span> 発令 &nbsp;|&nbsp; IF 気温 > 35°C → <span class="cr">即時 CAUTION</span>`;
+    confVal=0.79; confCls='cf-warn';
+  } else if(M.PST < 0.70) {
+    verb='CAUTION'; cls='caution';
+    sub='グリッドストレス上昇。新規契約審査強化。';
+    reason=`CLI <span class="ac">${fmt2(M.SCI)}</span> ストレス域 · 遷移圧力 CPTI <span class="ac">${fmt2(M.CPTI)}</span> 上昇 · AI-DC推算 <span class="ac">${ai.effectiveMW.toLocaleString()}MW</span> 高水準<br>IF PST > 0.70 → <span class="cr">CRITICAL</span> &nbsp;|&nbsp; 新規申請: 優先度審査・条件付き受理へ移行`;
+    confVal=0.72; confCls='cf-elec';
+  } else {
+    verb='CRITICAL'; cls='critical';
+    sub='グリッド限界域。受け入れ停止検討。緊急調整。';
+    reason=`CLI <span class="cr">${fmt2(M.SCI)}</span> 限界域 · AI-DC実効需要 <span class="cr">${ai.effectiveMW.toLocaleString()}MW</span> 予備容量逼迫<br>即時: <span class="cr">新規申請受理停止</span> · 既存契約見直し · 需要抑制要請`;
+    confVal=0.91; confCls='cf-crit';
+  }
+
+  const az = $('action-zone');
+  az.className = 'action-zone ' + cls;
+  const av = $('action-verb');
+  av.className = 'action-verb ' + cls;
+  av.textContent = verb;
+  $('action-sub').textContent = sub;
+  $('action-reason').innerHTML = 'WHY: ' + reason;
+  $('conf-fill').className = 'conf-fill ' + confCls;
+  $('conf-fill').style.width = (confVal*100)+'%';
+  $('conf-num').textContent = fmt2(confVal);
+  $('conf-num').style.color = confCls==='cf-green'?'var(--green)':confCls==='cf-warn'?'var(--warn)':confCls==='cf-elec'?'var(--elec)':'var(--crit)';
+
+  $('action-meta').innerHTML =
+    `<div class="ameta">PHASE<strong class="ac">${verb}</strong></div>` +
+    `<div class="ameta">PST<strong class="${M.PST>0.65?'cr':'hl'}">${fmt2(M.PST)}</strong></div>` +
+    `<div class="ameta">CLI<strong class="${M.SCI>0.65?'cr':M.SCI>0.45?'hl':'ok'}">${fmt2(M.SCI)}</strong></div>` +
+    `<div class="ameta">気温<strong class="${W.temp>=35?'cr':W.temp>=28?'hl':'ok'}">${W.temp}°C</strong></div>` +
+    `<div class="ameta">DC負荷<strong class="ac">${ai.effectiveMW.toLocaleString()}MW</strong></div>` +
+    `<div class="ameta">CONFIDENCE<strong class="ok">${fmt2(confVal)}</strong></div>`;
+
+  // --- トリガー ---
+  const triggers = [];
+  if(W.temp >= 30) triggers.push({cls:'active', t:`⚡ 高温 ${W.temp}°C`});
+  if(W.temp >= 35) triggers.push({cls:'critical', t:`🔴 猛暑 ${W.temp}°C — 冷却負荷最大`});
+  if(M.SCI > 0.45) triggers.push({cls:'active', t:`↑ CLI上昇中 ${fmt2(M.SCI)}`});
+  if(M.SCI > 0.65) triggers.push({cls:'critical', t:`▲ CLI限界域 — 受け入れ審査強化`});
+  if(M.CPTI > 0.55) triggers.push({cls:'hot', t:`↑ 遷移圧力 CPTI ${fmt2(M.CPTI)}`});
+  if(ai.stressPct > 6) triggers.push({cls:'hot', t:`AI-DC ${ai.effectiveMW.toLocaleString()}MW 高水準`});
+  triggers.push({cls:'ok', t:`▸ NEXT: CLI > 0.65 → CAUTION`});
+
+  $('trigger-row').innerHTML = triggers.map(tr =>
+    `<div class="trigger ${tr.cls}">${tr.t}</div>`).join('');
+
+  // --- anomaly ---
+  $('anomaly-flag').textContent = M.SCI > 0.55 ? 'TRUE' : 'FALSE';
+  $('anomaly-flag').style.color = M.SCI > 0.55 ? 'var(--warn)' : 'var(--green)';
+  $('conf-display').textContent = fmt2(confVal);
+
+  // --- Inference Suite ---
+  updateInferenceSuite();
+}
+
+// ── 24H 気温スパークライン ──
+function drawSparkTemp() {
+  const c = $('spark-temp');
+  if(!c || W.temp24h.length < 2) return;
+  const dpr = window.devicePixelRatio||1;
+  c.width = c.offsetWidth*dpr; c.height = c.offsetHeight*dpr;
+  const ctx = c.getContext('2d'); ctx.scale(dpr,dpr);
+  const Ww=c.offsetWidth, Hh=c.offsetHeight;
+  const data = W.temp24h;
+  const mn=Math.min(...data), mx=Math.max(...data);
+  const py = v => Hh - ((v-mn)/(mx-mn||1))*Hh*.82 - Hh*.06;
+  const pts = data.map((v,i)=>({x:(i/(data.length-1))*Ww, y:py(v)}));
+
+  // gradient fill
+  const g = ctx.createLinearGradient(0,0,0,Hh);
+  g.addColorStop(0,'rgba(192,132,252,.25)'); g.addColorStop(1,'rgba(192,132,252,0)');
+  ctx.beginPath(); ctx.moveTo(pts[0].x,Hh);
+  pts.forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.lineTo(pts[pts.length-1].x,Hh); ctx.closePath();
+  ctx.fillStyle=g; ctx.fill();
+
+  ctx.beginPath();
+  pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle='var(--elec)'; ctx.lineWidth=1.5; ctx.stroke();
+
+  // current dot
+  const last=pts[pts.length-1];
+  ctx.beginPath(); ctx.arc(last.x,last.y,4,0,Math.PI*2);
+  ctx.fillStyle='var(--elec)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(last.x,last.y,8,0,Math.PI*2);
+  ctx.strokeStyle='rgba(192,132,252,.35)'; ctx.lineWidth=1; ctx.stroke();
+
+  // foot labels
+  const now = new Date();
+  const labels = [];
+  for(let i=0;i<data.length;i+=6){
+    const h = new Date(now.getTime() - (data.length-1-i)*3600000);
+    labels.push(h.getHours()+':00');
+  }
+  $('spark-foot-temp').innerHTML = labels.map(l=>`<span>${l}</span>`).join('');
+}
+
+// ── UTC CLOCK ──
+(function tick(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  $('ts').textContent =
+    `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ` +
+    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
+  setTimeout(tick, 1000);
+})();
+
+// ── WOBBLE CYCLE (リアルタイム揺らぎ) ──
+function wobbleCycle() {
+  M.SCI  = clamp(M.SCI  + (Math.random()-.5)*0.012, 0.10, 0.95);
+  M.CPTI = clamp(M.CPTI + (Math.random()-.5)*0.010, 0.10, 0.90);
+  M.OSI  = clamp(M.OSI  + (Math.random()-.5)*0.008, 0.05, 0.50);
+  M.MCI  = clamp(M.MCI  + (Math.random()-.5)*0.008, 0.40, 0.90);
+  M.PST  = clamp(M.SCI*0.5 + M.CPTI*0.3 + M.OSI*0.2, 0.05, 0.95);
+  updateInferenceSuite();
+}
+
+// ── INIT ──
+async function init() {
+  $('loading').classList.remove('hidden');
+  $('load-msg').textContent = '東京気象データ取得中 …';
+  try {
+    await fetchWeather();
+    $('load-msg').textContent = 'LoPAS指標演算中 …';
+    deriveLoPAS();
+    updateUI();
+    drawSparkTemp();
+  } catch(e) {
+    console.error(e);
+    $('load-msg').textContent = 'エラー: ' + e.message;
+  } finally {
+    $('loading').classList.add('hidden');
+  }
+}
+
+init();
+setInterval(wobbleCycle, 1600);
+setInterval(async () => {
+  await fetchWeather();
+  updateUI();
+  drawSparkTemp();
+}, 300000); // 5分ごとに気象更新
+</script>
+</body>
+</html>
