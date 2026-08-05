@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LoPAS Fire Translator — Suwa District Node</title>
+<title>LoPAS Fire Translator v0.3 — Suwa Region</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;500;600;700;900&display=swap');
 
@@ -255,6 +257,53 @@ footer {
 .body-grid .card:nth-child(3){ animation:fi .4s .22s ease both; }
 .body-grid .card:nth-child(4){ animation:fi .4s .26s ease both; }
 @keyframes fi { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+/* ── TERRAIN WIND UNCERTAINTY (v0.2) ── */
+.card-wide { grid-column: 1 / -1; }
+#terr-map {
+  width:100%; height:440px; border:1px solid var(--border); border-radius:2px;
+  background:#050300; margin-top:10px;
+}
+#terr-map .leaflet-container { background:#050300; }
+.terr-toolbar {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px;
+  font-family:var(--mono); font-size:9px; color:var(--textdim);
+}
+.terr-btn {
+  background:var(--bg3); border:1px solid var(--border); color:var(--accent);
+  font-family:var(--mono); font-size:9px; letter-spacing:.12em; padding:6px 12px;
+  border-radius:2px; cursor:pointer; text-transform:uppercase;
+}
+.terr-btn:hover { border-color:var(--accent); }
+.terr-btn:disabled { color:var(--textdim); cursor:default; border-color:var(--dim); }
+.terr-stats {
+  display:flex; gap:18px; flex-wrap:wrap; margin-top:12px;
+  font-family:var(--mono); font-size:9px; color:var(--textdim);
+}
+.terr-stat strong { display:block; font-size:16px; margin-top:2px; letter-spacing:.04em; }
+.terr-legend {
+  display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:9px;
+  color:var(--textdim); margin-top:10px;
+}
+.terr-ramp {
+  width:140px; height:8px; border:1px solid var(--border); border-radius:2px;
+  background:linear-gradient(90deg, rgba(240,184,0,.15), rgba(240,184,0,.55) 35%, rgba(255,106,0,.7) 68%, rgba(240,48,32,.85));
+}
+.terr-note {
+  margin-top:12px; padding:8px 10px; background:var(--bg3); border:1px solid var(--border);
+  border-radius:2px; font-family:var(--mono); font-size:9px; color:var(--textdim); line-height:1.9;
+}
+.terr-note .hl { color:var(--warn); }
+.wind-arrow-icon { pointer-events:none; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background:var(--bg2); color:var(--text); border:1px solid var(--border);
+  font-family:var(--mono); font-size:10px; border-radius:2px;
+}
+.leaflet-popup-content { margin:10px 12px; line-height:1.9; }
+.leaflet-control-layers, .leaflet-bar a {
+  background:var(--bg2) !important; color:var(--text) !important;
+  border-color:var(--border) !important; font-family:var(--mono);
+}
 </style>
 </head>
 <body>
@@ -284,12 +333,12 @@ footer {
 <div class="shell">
 <header>
   <div class="logo">
-    <div class="sys">LoPAS / Fire Translator v0.1 — Live Node</div>
-    <div class="name">SUWA OBSERVER</div>
+    <div class="sys">LoPAS / Fire Translator v0.3 — Suwa Region</div>
+    <div class="name">FIELD OBSERVER</div>
   </div>
   <div class="header-right">
     <span class="dot dot-live" id="status-dot"></span><span id="status-label">LIVE</span> &nbsp;|&nbsp;
-    <span class="coord">36.0°N &nbsp;138.1°E — Suwa District, Nagano</span><br>
+    <span class="coord" id="hdr-coord">36.05°N &nbsp;138.11°E — Suwa Region, Nagano (default)</span><br>
     <span id="ts">—</span><br>
     <span id="key-indicator">—</span> &nbsp;|&nbsp;
     <button id="refresh-btn" onclick="init()">↻ REFRESH</button>
@@ -325,7 +374,7 @@ footer {
       <div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--textdim);margin-bottom:2px">ACTIVE FIRE POINTS</div>
         <div class="big-val" id="fire-count" style="color:var(--accent)">—</div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim)">within 50km radius</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--textdim)">within analysis area</div>
       </div>
       <div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--textdim);margin-bottom:2px">TOTAL FRP</div>
@@ -378,48 +427,6 @@ footer {
     </div>
   </div>
 
-
-  <!-- CARD: AI Inference Resource Tracker -->
-  <div class="card" style="animation: fi .4s .3s ease both;">
-    <div class="clabel">lopas · inference suite & physical resource alignment</div>
-    <div class="ctitle">AI Inference Resource Tracker</div>
-    
-    <div style="display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap">
-      <div>
-        <div style="font-family:var(--mono); font-size:9px; color:var(--textdim); margin-bottom:2px">GENERATED TOKENS</div>
-        <div class="big-val" id="res-tokens" style="color:var(--accent)">0</div>
-        <div style="font-family:var(--mono); font-size:9px; color:var(--textdim)">accumulated T_gen</div>
-      </div>
-      <div>
-        <div style="font-family:var(--mono); font-size:9px; color:var(--textdim); margin-bottom:2px">POWER CONSUMPTION</div>
-        <div class="big-val" id="res-power" style="font-size:32px; color:var(--crit)">0.00 Wh</div>
-        <div style="font-family:var(--mono); font-size:9px; color:var(--textdim)">physical energy cost (E_total)</div>
-      </div>
-    </div>
-
-    <div class="row-bar">
-      <div class="row-bar-head"><span>THOUGHT WIDTH (BCDI 分岐操作幅)</span><span id="val-width" style="color:var(--accent)">0</span></div>
-      <div class="bar-track"><div class="bar-fill bf-blue" id="bar-width" style="width:0%"></div></div>
-    </div>
-    <div class="row-bar">
-      <div class="row-bar-head"><span>THOUGHT DEPTH (CII×LPI×RII 因果深度)</span><span id="val-depth" style="color:var(--warn)">0</span></div>
-      <div class="bar-track"><div class="bar-fill bf-warn" id="bar-depth" style="width:0%"></div></div>
-    </div>
-    <div class="row-bar">
-      <div class="row-bar-head"><span>REAL-TIME CO2 EMISSION</span><span id="val-co2" style="color:var(--textdim)">0.000 mg</span></div>
-      <div class="bar-track"><div class="bar-fill bf-crit" id="bar-co2" style="width:0%"></div></div>
-    </div>
-
-    <div class="spark-wrap" style="margin-top:14px;">
-      <div class="clabel" style="margin-bottom:4px">Real-time Inference Space Explosion (BCDI × CII Chain)</div>
-      <canvas id="tree-canvas" style="width:100%; height:90px; background:var(--bg3); border:1px solid var(--border); border-radius:2px; display:block;"></canvas>
-    </div>
-    
-    <div style="margin-top:10px; font-family:var(--mono); font-size:9px; color:var(--textdim); line-height:1.9; border-top:1px solid var(--border); padding-top:10px;" id="res-note">
-      Calculating physical costs from Inference Suite vectors...
-    </div>
-  </div>
-
   <!-- CARD 3: Phase -->
   <div class="card">
     <div class="clabel">lptm · fire phase transition model</div>
@@ -469,18 +476,59 @@ footer {
     <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:1.9;border-top:1px solid var(--border);padding-top:10px;" id="src-note">—</div>
   </div>
 
+  <!-- CARD 5: Terrain Wind Uncertainty (v0.2) -->
+  <div class="card card-wide">
+    <div class="clabel">terrain · near-surface wind predictability</div>
+    <div class="ctitle">Wind Uncertainty Map</div>
+
+    <div class="terr-toolbar">
+      <button class="terr-btn" id="terr-btn" onclick="terrLoadAndCompute()">⛰ LOAD TERRAIN + COMPUTE</button>
+      <button class="terr-btn" onclick="useMyPosition()">📍 MY POSITION</button>
+      <button class="terr-btn" onclick="useMapCenter()">⌖ USE MAP CENTER</button>
+      <span id="terr-status">Works anywhere on Earth — pan the map or use your position, then load terrain (one-time per area)</span>
+    </div>
+
+    <div id="terr-map"></div>
+
+    <div class="terr-legend">
+      <span>FORECAST WIND RELIABLE</span>
+      <div class="terr-ramp"></div>
+      <span>WIND HARD TO PREDICT</span>
+      <span style="margin-left:14px">▲ = 10m forecast wind (blows toward arrow)</span>
+      <span>● = VIIRS fire point</span>
+    </div>
+
+    <div class="terr-stats">
+      <div class="terr-stat">MEAN UNCERTAINTY<strong id="terr-mean" style="color:var(--warn)">—</strong></div>
+      <div class="terr-stat">HIGH-U AREA (&gt;0.60)<strong id="terr-high" style="color:var(--accent)">—</strong></div>
+      <div class="terr-stat">MAX U AT FIRE POINTS<strong id="terr-fireu" style="color:var(--crit)">—</strong></div>
+      <div class="terr-stat">DEM RESOLUTION<strong id="terr-res" style="color:var(--textdim)">—</strong></div>
+      <div class="terr-stat">COMPUTED FOR WIND<strong id="terr-wind" style="color:var(--textdim)">—</strong></div>
+    </div>
+
+    <div class="terr-note">
+      WHAT THIS LAYER IS: a <span class="hl">heuristic terrain score</span>, not a wind simulation.
+      It flags cells where the 10m gridded forecast is least trustworthy:
+      lee slopes facing downwind (rotor / eddy zones), valleys crossing the forecast wind (channeling, sudden direction shifts),
+      and highly rugged relief. Click anywhere on the map to probe a cell.<br>
+      FOR TACTICAL WIND FIELDS: use USFS <span class="hl">WindNinja</span> (free, terrain-resolving diagnostic model).
+      This layer tells you <span class="hl">where</span> you need it.
+      Recompute after each refresh — the score depends on current forecast wind direction.
+    </div>
+  </div>
+
 </div><!-- /body-grid -->
 
 <footer>
-  <span>LoPAS Fire Translator v0.1 — Suwa District Node — Live data via NASA FIRMS + Open-Meteo</span>
+  <span>LoPAS Fire Translator v0.3 — Suwa Region — NASA FIRMS + Open-Meteo + AWS Terrain Tiles (worldwide)</span>
   <span>PFS v0.3 · LPTM v2 · Fire Schema v0.1</span>
 </footer>
 </div><!-- /shell -->
 
 <script>
 // ── CONFIG ──────────────────────────────────────────
-const COORD = { lat: 36.0, lon: 138.1 };   // Plumas County center
-const BBOX  = '137.6,35.7,138.6,36.3';    // west,south,east,north
+let COORD = { lat: 36.05, lon: 138.11 };     // default: Plumas County (movable, v0.3)
+let BBOX  = '137.70,35.75,138.50,36.35';      // west,south,east,north — follows analysis area
 const RADIUS_KM = 50;
 let MAP_KEY = '';
 let firmsMode = false;
@@ -490,80 +538,6 @@ const $ = id => document.getElementById(id);
 const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
 const fmt2 = n => (Math.round(n*100)/100).toFixed(2);
 const p = n => String(n).padStart(2,'0');
-
-
-// ── INFERENCE SUITE CONSTANTS ───────────────────────
-const J_PER_TOKEN = 0.072; // assumed physical energy constant (Joule/token)
-let ACCUMULATED_TOKENS = 0;
-let ACCUMULATED_POWER  = 0; // Wh
-
-// ── RESOURCE COMPUTATION LOGIC ──────────────────────
-function updateInferenceTracker(currentLoPASMetrics = {}) {
-  const SCI  = currentLoPASMetrics.SCI  ?? 0.42;
-  const CPTI = currentLoPASMetrics.CPTI ?? 0.55;
-  const OSI  = currentLoPASMetrics.OSI  ?? 0.14;
-
-  const BCDI_width = clamp(Math.floor(2 + SCI * 12 + Math.random() * 2), 2, 16);
-  const Suite_depth = clamp(CPTI * 0.85 + (SCI * 0.15), 0.1, 1.0);
-  const baseTokens = Math.round((BCDI_width * 45) * Math.exp(Suite_depth * 2.5));
-  const cycleTokens = Math.round(baseTokens * (1.0 + OSI));
-
-  ACCUMULATED_TOKENS += cycleTokens;
-
-  const cycleJoules = cycleTokens * J_PER_TOKEN;
-  ACCUMULATED_POWER += (cycleJoules / 3600);
-
-  const co2Mg = ACCUMULATED_POWER * 400;
-
-  const tokensEl = $('res-tokens');
-  if(!tokensEl) return;
-  tokensEl.textContent = ACCUMULATED_TOKENS.toLocaleString();
-  $('res-power').textContent  = fmt2(ACCUMULATED_POWER) + ' Wh';
-  $('val-width').textContent = BCDI_width;
-  $('bar-width').style.width = (BCDI_width / 16 * 100) + '%';
-  $('val-depth').textContent = fmt2(Suite_depth);
-  $('bar-depth').style.width = (Suite_depth * 100) + '%';
-  $('val-co2').textContent = fmt2(co2Mg) + ' mg';
-  $('bar-co2').style.width = clamp((ACCUMULATED_POWER * 10), 0, 100) + '%';
-
-  $('res-note').innerHTML = 
-    `Formula: T_gen = (BCDI_width × 45) × e^(Suite_depth × 2.5) × (1 + OSI)<br>` +
-    `Hardware constant: <span style="color:var(--accent)">${J_PER_TOKEN} J/token</span> &nbsp;·&nbsp; ` +
-    `MCI Correlation: <span style="color:var(--green)">TRUE</span>`;
-
-  drawInferenceTree(BCDI_width, Suite_depth);
-}
-
-// ── LIVE TREE CANVAS DRAW ───────────────────────────
-function drawInferenceTree(width, depth) {
-  const canvas = $('tree-canvas');
-  if(!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width = canvas.offsetWidth;
-  const H = canvas.height = canvas.offsetHeight;
-  
-  ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = depth > 0.6 ? 'rgba(240,48,32,0.4)' : 'rgba(0,200,240,0.3)';
-  ctx.lineWidth = 1;
-
-  const startX = W / 2;
-  const startY = 10;
-  
-  for(let i = 0; i < width; i++) {
-    const endX = (W / (width + 1)) * (i + 1);
-    const endY = startY + (depth * 60) + (Math.random() * 10);
-    
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.bezierCurveTo(startX, startY + 20, endX, endY - 20, endX, endY);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.arc(endX, endY, 2, 0, Math.PI * 2);
-    ctx.fillStyle = depth > 0.6 ? getComputedStyle(document.documentElement).getPropertyValue('--crit') : getComputedStyle(document.documentElement).getPropertyValue('--accent');
-    ctx.fill();
-  }
-}
 
 function setInd(key, val, desc, cls, pct) {
   const colors = { ok:'var(--green)', warn:'var(--warn)', orange:'var(--accent)', crit:'var(--crit)', info:'#00c8f0' };
@@ -593,7 +567,7 @@ async function fetchWeather() {
     `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,` +
     `precipitation,vapour_pressure_deficit` +
     `&daily=temperature_2m_max,precipitation_sum,wind_speed_10m_max` +
-    `&timezone=Asia%2FTokyo&forecast_days=3`;
+    `&timezone=UTC&forecast_days=3`;
   const res = await fetch(url);
   if(!res.ok) throw new Error(`Weather HTTP ${res.status}`);
   return res.json();
@@ -639,7 +613,7 @@ function parseFIRMScsv(csv) {
 
 // ── LOPAS FIRE COMPUTATION ───────────────────────────
 function computeFireLoPAS(weather, firePoints) {
-  const nowIdx = new Date().getHours();
+  const nowIdx = new Date().getUTCHours();
   const temp   = weather.hourly.temperature_2m[nowIdx]        || 25;
   const rh     = weather.hourly.relative_humidity_2m[nowIdx]  || 40;
   const wind   = weather.hourly.wind_speed_10m[nowIdx]        || 5;
@@ -881,9 +855,9 @@ function updateSources(weatherOK, firmsOK, fetchedAt) {
       <td style="color:${firmsOK?'var(--green)':firmsMode?'var(--crit)':'var(--textdim)'}">${firmsOK?'OK':firmsMode?'ERROR':'NO KEY'}</td>
     </tr>
     <tr>
-      <td><span class="sdot sdot-pend"></span>USGS</td>
-      <td>Terrain · Slope</td><td style="color:var(--textdim)">STATIC</td>
-      <td style="color:var(--textdim)">PENDING</td>
+      <td><span class="sdot ${window.TERR_STATUS==='OK'?'sdot-ok':window.TERR_STATUS==='ERROR'?'sdot-err':'sdot-pend'}"></span>AWS Terrain Tiles</td>
+      <td>DEM · Slope · Uncertainty</td><td style="color:var(--textdim)">STATIC</td>
+      <td style="color:${window.TERR_STATUS==='OK'?'var(--green)':window.TERR_STATUS==='ERROR'?'var(--crit)':'var(--textdim)'}">${window.TERR_STATUS}</td>
     </tr>`;
 
   $('key-indicator').textContent = firmsMode
@@ -893,7 +867,7 @@ function updateSources(weatherOK, firmsOK, fetchedAt) {
   $('src-note').innerHTML =
     `Fetched: <span style="color:var(--accent)">${fetchedAt}</span><br>` +
     `Mode: <span style="color:${firmsMode?'var(--green)':'var(--warn)'}">${firmsMode?'FULL (FIRMS + Weather)':'WEATHER ONLY'}</span><br>` +
-    `USGS terrain integration → roadmap v0.2`;
+    `Terrain layer: heuristic uncertainty score — not a wind simulation`;
 }
 
 // ── MAIN ─────────────────────────────────────────────
@@ -930,7 +904,7 @@ async function init() {
     return;
   }
 
-  const nowIdx = new Date().getHours();
+  const nowIdx = new Date().getUTCHours();
   const m = computeFireLoPAS(weather, firePoints);
 
   // Field state panel
@@ -992,8 +966,9 @@ async function init() {
   // Sources
   updateSources(weatherOK, firmsOK, fetchedAt);
 
-  // Inference resource tracker
-  updateInferenceTracker({ SCI: m.SCI, CPTI: m.CPTI, OSI: m.OSI });
+  // Terrain layer
+  window.__m = m; window.__fp = firePoints;
+  try { terrainOnData(); } catch(e){ console.warn('terrain refresh skipped:', e); }
 
   $('loading').classList.add('hidden');
 }
@@ -1009,6 +984,425 @@ async function init() {
 
 // Auto-refresh every 30 min
 setInterval(init, 30 * 60 * 1000);
+
+// ══════════════════════════════════════════════════════
+// TERRAIN WIND-UNCERTAINTY MODULE  (v0.2)
+// DEM: AWS Terrain Tiles (terrarium PNG, no key, CORS ok)
+// Heuristic layer — flags where 10m forecast wind is
+// least trustworthy over complex terrain. NOT a wind model.
+// ══════════════════════════════════════════════════════
+
+const TERR = {
+  bbox: { w:-121.60, s:39.45, e:-120.40, n:40.55 },   // Suwa Region analysis window
+  z: 10,                                              // ~110 m/px at 40°N
+  demLoaded:false, demLoading:false,
+  W:0, H:0, x0:0, y0:0, x1:0, y1:0,
+  elev:null, slope:null, aspect:null, tri:null, curv:null, U:null,
+  map:null, overlay:null, windLayer:null, fireLayer:null,
+  bounds:null, lastWindDir:null, maxFireU:null,
+};
+window.TERR_STATUS = 'PENDING';
+
+// ── web-mercator tile math ───────────────────────────
+function t_lon2tx(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
+function t_lat2ty(lat,z){ const r=lat*Math.PI/180;
+  return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); }
+function t_tx2lon(x,z){ return x/Math.pow(2,z)*360-180; }
+function t_ty2lat(y,z){ const n=Math.PI-2*Math.PI*y/Math.pow(2,z);
+  return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
+function t_res(lat){ return 156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,TERR.z); } // m per px
+
+// ── map init ─────────────────────────────────────────
+function terrInitMap(){
+  if(TERR.map || typeof L === 'undefined') return;
+  const sat = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom:16, attribution:'Imagery © Esri' });
+  const dark = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { maxZoom:16, attribution:'© OSM © CARTO' });
+  TERR.map = L.map('terr-map', { center:[COORD.lat, COORD.lon], zoom:10, layers:[sat] });
+  // explicit stacking: tiles(200) < uncertainty(350) < fire(450) < wind/markers(600) < popups(700)
+  TERR.map.createPane('uncertainty');
+  TERR.map.getPane('uncertainty').style.zIndex = 350;
+  TERR.map.getPane('uncertainty').style.pointerEvents = 'none';
+  TERR.map.createPane('firepts');
+  TERR.map.getPane('firepts').style.zIndex = 450;
+  L.control.layers({ 'SATELLITE':sat, 'DARK':dark }, null, { position:'topright' }).addTo(TERR.map);
+  TERR.rect = L.rectangle([[TERR.bbox.s,TERR.bbox.w],[TERR.bbox.n,TERR.bbox.e]],
+    { color:'#ff6a00', weight:1, fill:false, dashArray:'4 4', interactive:false }).addTo(TERR.map);
+  TERR.windLayer = L.layerGroup().addTo(TERR.map);
+  TERR.fireLayer = L.layerGroup().addTo(TERR.map);
+  TERR.map.on('click', terrProbe);
+}
+
+// ── DEM loading (terrarium mosaic) ───────────────────
+async function terrLoadDEM(){
+  if(TERR.demLoaded || TERR.demLoading) return TERR.demLoaded;
+  TERR.demLoading = true;
+  const z = TERR.z;
+  const x0 = t_lon2tx(TERR.bbox.w,z), x1 = t_lon2tx(TERR.bbox.e,z);
+  const y0 = t_lat2ty(TERR.bbox.n,z), y1 = t_lat2ty(TERR.bbox.s,z);
+  const nx = x1-x0+1, ny = y1-y0+1, total = nx*ny;
+  const W = nx*256, H = ny*256;
+
+  const cnv = document.createElement('canvas'); cnv.width=W; cnv.height=H;
+  const ctx = cnv.getContext('2d', { willReadFrequently:true });
+
+  let done = 0, failed = 0;
+  const jobs = [];
+  for(let ty=y0; ty<=y1; ty++) for(let tx=x0; tx<=x1; tx++){
+    const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${tx}/${ty}.png`;
+    jobs.push(fetch(url)
+      .then(r => { if(!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(b => createImageBitmap(b))
+      .then(img => { ctx.drawImage(img,(tx-x0)*256,(ty-y0)*256); })
+      .catch(() => { failed++; })
+      .finally(() => {
+        done++;
+        $('terr-status').textContent = `Fetching DEM tiles … ${done}/${total}`;
+      }));
+  }
+  await Promise.all(jobs);
+  if(failed > total/2){
+    $('terr-status').textContent = `DEM fetch failed (${failed}/${total} tiles). Check connection and retry.`;
+    TERR.demLoading = false;
+    return false;
+  }
+
+  $('terr-status').textContent = 'Decoding elevation …';
+  await new Promise(r => setTimeout(r, 20)); // let UI paint
+  const px = ctx.getImageData(0,0,W,H).data;
+  const elev = new Float32Array(W*H);
+  for(let i=0, j=0; i<W*H; i++, j+=4){
+    elev[i] = px[j]*256 + px[j+1] + px[j+2]/256 - 32768;   // terrarium decode
+  }
+
+  Object.assign(TERR, { elev, W, H, x0, y0, x1, y1, demLoaded:true, demLoading:false });
+  TERR.bounds = [[t_ty2lat(y1+1,z), t_tx2lon(x0,z)], [t_ty2lat(y0,z), t_tx2lon(x1+1,z)]];
+  terrDerivatives();
+  window.TERR_STATUS = 'OK';
+  const midRes = Math.round(t_res((TERR.bbox.n+TERR.bbox.s)/2));
+  $('terr-res').textContent = `~${midRes} m`;
+  return true;
+}
+
+// ── terrain derivatives (slope, aspect, TRI, curvature) ─
+function terrDerivatives(){
+  const { elev, W, H, y0 } = TERR;
+  const slope  = new Float32Array(W*H);
+  const aspect = new Float32Array(W*H);
+  const tri    = new Float32Array(W*H);
+  const curv   = new Float32Array(W*H);
+  const axis   = new Float32Array(W*H);   // valley axis bearing (0–180°)
+
+  for(let y=1; y<H-1; y++){
+    const lat = t_ty2lat(y0 + (y+0.5)/256, TERR.z);
+    const d   = t_res(lat);                       // m per px (locally isotropic in mercator)
+    for(let x=1; x<W-1; x++){
+      const i = y*W + x;
+      const gE =  (elev[i+1] - elev[i-1]) / (2*d);          // dE/d(east)
+      const gN = -(elev[i+W] - elev[i-W]) / (2*d);          // dE/d(north)  (+y is south)
+      slope[i]  = Math.atan(Math.hypot(gE,gN)) * 180/Math.PI;
+      aspect[i] = (Math.atan2(-gE,-gN) * 180/Math.PI + 360) % 360;  // downslope bearing
+
+      let s = 0;
+      s += Math.abs(elev[i-1]-elev[i]) + Math.abs(elev[i+1]-elev[i]);
+      s += Math.abs(elev[i-W]-elev[i]) + Math.abs(elev[i+W]-elev[i]);
+      s += Math.abs(elev[i-W-1]-elev[i]) + Math.abs(elev[i-W+1]-elev[i]);
+      s += Math.abs(elev[i+W-1]-elev[i]) + Math.abs(elev[i+W+1]-elev[i]);
+      tri[i] = s/8;
+
+      // directional 2nd derivatives (1/m): E-W(90°), N-S(0°), NE-SW(45°), NW-SE(135°)
+      const dd = d*d;
+      const c90  = (elev[i-1]+elev[i+1]-2*elev[i])/dd;
+      const c0   = (elev[i-W]+elev[i+W]-2*elev[i])/dd;
+      const c45  = (elev[i-W+1]+elev[i+W-1]-2*elev[i])/(2*dd);
+      const c135 = (elev[i-W-1]+elev[i+W+1]-2*elev[i])/(2*dd);
+      curv[i] = c90 + c0;                                   // >0 = concave (valley)
+      // valley axis = direction of minimum curvature (the along-valley direction)
+      let best = 0, bc = c0;
+      if(c45  < bc){ best = 45;  bc = c45;  }
+      if(c90  < bc){ best = 90;  bc = c90;  }
+      if(c135 < bc){ best = 135; bc = c135; }
+      axis[i] = best;
+    }
+  }
+  Object.assign(TERR, { slope, aspect, tri, curv, axis });
+}
+
+// ── uncertainty field for a given forecast wind ──────
+function terrComputeU(windDirFrom){
+  const { slope, aspect, tri, curv, axis, W, H } = TERR;
+  const wt = ((windDirFrom + 180) % 360) * Math.PI/180;     // direction wind blows TOWARD
+  const U = new Float32Array(W*H);
+
+  const TRI_SCALE = 45;      // m  — mean neighbor relief for "very rugged" at ~110 m px
+  const CURV_SCALE = 0.0025; // 1/m — pronounced valley cross-section
+  const SLOPE_SCALE = 35;    // deg
+
+  for(let i=0; i<W*H; i++){
+    const triN   = Math.min(tri[i]/TRI_SCALE, 1);
+    const slopeN = Math.min(slope[i]/SLOPE_SCALE, 1);
+    const a = aspect[i]*Math.PI/180;
+    const align = Math.cos(a - wt);                // +1: downslope points downwind (lee)
+    const lee   = Math.max(0, align) * slopeN;     // lee-slope rotor / eddy zones
+    const valleyN = Math.max(0, Math.min(curv[i]/CURV_SCALE, 1));
+    // cross-valley component: wind perpendicular to valley axis → eddies, direction flips
+    const cross   = Math.abs(Math.sin(wt - axis[i]*Math.PI/180));
+    const channel = valleyN * (0.45 + 0.55*cross);
+    U[i] = Math.min(0.38*triN + 0.34*lee + 0.28*channel, 1);
+  }
+
+  // one 3×3 box blur to knock down pixel noise
+  const B = new Float32Array(W*H);
+  for(let y=1; y<H-1; y++) for(let x=1; x<W-1; x++){
+    const i = y*W+x;
+    B[i] = (U[i]+U[i-1]+U[i+1]+U[i-W]+U[i+W]+U[i-W-1]+U[i-W+1]+U[i+W-1]+U[i+W+1])/9;
+  }
+  TERR.U = B;
+  TERR.lastWindDir = windDirFrom;
+}
+
+// ── render overlay ───────────────────────────────────
+function terrRenderOverlay(){
+  const { U, W, H } = TERR;
+  const cnv = document.createElement('canvas'); cnv.width=W; cnv.height=H;
+  const ctx = cnv.getContext('2d');
+  const img = ctx.createImageData(W,H);
+  const d = img.data;
+  for(let i=0, j=0; i<W*H; i++, j+=4){
+    const u = U[i];
+    if(u < 0.15){ d[j+3]=0; continue; }
+    const t = (u-0.15)/0.85;
+    let r,g,b;
+    if(t < 0.5){ const k=t/0.5;  r=240+15*k; g=184-78*k;  b=0; }        // yellow → orange
+    else       { const k=(t-0.5)/0.5; r=255-15*k; g=106-58*k; b=32*k; } // orange → red
+    d[j]=r; d[j+1]=g; d[j+2]=b;
+    d[j+3] = Math.round((0.15 + 0.55*t)*255);
+  }
+  ctx.putImageData(img,0,0);
+  if(TERR.overlay) TERR.map.removeLayer(TERR.overlay);
+  TERR.overlay = L.imageOverlay(cnv.toDataURL(), TERR.bounds, { opacity:1, interactive:false, pane:'uncertainty' });
+  TERR.overlay.addTo(TERR.map);
+}
+
+// ── sample U at lat/lon ──────────────────────────────
+function terrSample(lat, lon, arr){
+  const z=TERR.z, n=Math.pow(2,z)*256;
+  const gx = (lon+180)/360*n;
+  const r = lat*Math.PI/180;
+  const gy = (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n;
+  const x = Math.round(gx - TERR.x0*256), y = Math.round(gy - TERR.y0*256);
+  if(x<0||y<0||x>=TERR.W||y>=TERR.H) return null;
+  return arr[y*TERR.W+x];
+}
+
+// ── click probe ──────────────────────────────────────
+function terrProbe(e){
+  if(!TERR.demLoaded) return;
+  const {lat,lng} = e.latlng;
+  const el = terrSample(lat,lng,TERR.elev);
+  if(el===null) return;
+  const sl = terrSample(lat,lng,TERR.slope), u = TERR.U ? terrSample(lat,lng,TERR.U) : null;
+  const asp = terrSample(lat,lng,TERR.aspect), cv = terrSample(lat,lng,TERR.curv);
+  const uTxt = u===null ? '—' : fmt2(u);
+  const uCol = u===null ? 'var(--textdim)' : u>0.6 ? 'var(--crit)' : u>0.35 ? 'var(--accent)' : 'var(--green)';
+  L.popup().setLatLng(e.latlng).setContent(
+    `<b style="color:${uCol}">WIND UNCERTAINTY ${uTxt}</b><br>` +
+    `ELEV ${Math.round(el)} m · SLOPE ${sl.toFixed(0)}°<br>` +
+    `ASPECT ${asp.toFixed(0)}° · ${cv>0.0008?'VALLEY':cv<-0.0008?'RIDGE':'PLANAR'}<br>` +
+    `<span style="color:#6b4820">${lat.toFixed(3)}°N ${Math.abs(lng).toFixed(3)}°W</span>`
+  ).openOn(TERR.map);
+}
+
+// ── wind arrow grid (Open-Meteo multi-point) ─────────
+async function terrWindGrid(){
+  const lats=[], lons=[];
+  for(let iy=0; iy<3; iy++) for(let ix=0; ix<3; ix++){
+    lats.push((TERR.bbox.s + (iy+0.5)*(TERR.bbox.n-TERR.bbox.s)/3).toFixed(3));
+    lons.push((TERR.bbox.w + (ix+0.5)*(TERR.bbox.e-TERR.bbox.w)/3).toFixed(3));
+  }
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+              `&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=UTC`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(`wind grid HTTP ${res.status}`);
+  let data = await res.json();
+  if(!Array.isArray(data)) data = [data];
+
+  TERR.windLayer.clearLayers();
+  data.forEach((pt,k) => {
+    const spd = pt.current.wind_speed_10m, dir = pt.current.wind_direction_10m;
+    const col = spd>10 ? '#f03020' : spd>5 ? '#ff6a00' : '#f0b800';
+    const icon = L.divIcon({
+      className:'wind-arrow-icon',
+      html:`<svg width="46" height="46" viewBox="-23 -23 46 46" style="transform:rotate(${(dir+180)%360}deg)">
+              <line x1="0" y1="10" x2="0" y2="-8" stroke="${col}" stroke-width="2.2"/>
+              <path d="M0,-15 L-5,-6 L5,-6 Z" fill="${col}"/>
+            </svg>
+            <div style="font:8px 'Space Mono',monospace;color:${col};text-align:center;margin-top:-8px">${Math.round(spd)}m/s</div>`,
+      iconSize:[46,54], iconAnchor:[23,23]
+    });
+    L.marker([parseFloat(lats[k]), parseFloat(lons[k])], { icon, interactive:false }).addTo(TERR.windLayer);
+  });
+}
+
+// ── fire points on map ───────────────────────────────
+function terrFirePoints(){
+  TERR.fireLayer.clearLayers();
+  const fp = window.__fp || [];
+  fp.forEach(f => {
+    const rad = Math.max(4, Math.min(14, 4 + f.frp/20));
+    L.circleMarker([f.lat, f.lon], {
+      radius:rad, color:'#f03020', weight:1.5, fillColor:'#ff6a00', fillOpacity:0.55, pane:'firepts'
+    }).bindPopup(
+      `<b style="color:var(--crit)">FIRE POINT</b><br>FRP ${f.frp.toFixed(0)} MW · CONF ${f.conf}<br>` +
+      `U ${TERR.U ? (v=>v===null?'—':fmt2(v))(terrSample(f.lat,f.lon,TERR.U)) : '—'}`
+    ).addTo(TERR.fireLayer);
+  });
+}
+
+// ── stats + LoPAS integration ────────────────────────
+function terrStats(){
+  const { U, W, H } = TERR;
+  let sum=0, hi=0, n=0;
+  for(let i=0;i<W*H;i+=7){ sum+=U[i]; if(U[i]>0.6) hi++; n++; }   // stride sample
+  const mean = sum/n, hiPct = hi/n*100;
+  $('terr-mean').textContent = fmt2(mean);
+  $('terr-high').textContent = hiPct.toFixed(0)+'%';
+  const dn = ['N','NE','E','SE','S','SW','W','NW'][Math.round(TERR.lastWindDir/45)%8];
+  $('terr-wind').textContent = `${Math.round(TERR.lastWindDir)}° (${dn})`;
+
+  // U at fire points → warn if spread estimate is unreliable
+  const fp = window.__fp || [];
+  let maxU = null;
+  fp.forEach(f => { const u = terrSample(f.lat,f.lon,U); if(u!==null && (maxU===null||u>maxU)) maxU=u; });
+  TERR.maxFireU = maxU;
+  $('terr-fireu').textContent = maxU===null ? (fp.length?'OUT OF AREA':'NO FIRES') : fmt2(maxU);
+  $('terr-fireu').style.color = maxU===null ? 'var(--textdim)' : maxU>0.55 ? 'var(--crit)' : maxU>0.35 ? 'var(--accent)' : 'var(--green)';
+
+  // user position readout
+  if(TERR.userMarker){
+    const ll = TERR.userMarker.getLatLng();
+    const uu = terrSample(ll.lat, ll.lng, U);
+    if(uu !== null){
+      const ee = terrSample(ll.lat, ll.lng, TERR.elev);
+      const cc = uu>0.6?'var(--crit)':uu>0.35?'var(--accent)':'var(--green)';
+      TERR.userMarker.bindPopup(
+        `<b style="color:${cc}">YOU ARE HERE — WIND UNCERTAINTY ${fmt2(uu)}</b><br>` +
+        `ELEV ${Math.round(ee)} m · ${uu>0.6?'forecast wind NOT reliable at your position':uu>0.35?'treat forecast wind with caution':'forecast wind reliable here'}`
+      ).openPopup();
+    }
+  }
+
+  if(maxU !== null && maxU > 0.55){
+    const chip = document.createElement('div');
+    chip.className = 'trigger critical';
+    chip.textContent = `⛰ FIRE IN HIGH WIND-UNCERTAINTY TERRAIN (U ${fmt2(maxU)})`;
+    $('trigger-row').appendChild(chip);
+    const sp = $('spread-panel');
+    sp.innerHTML += `<br><span style="color:var(--crit)">⚠ SPREAD VECTOR UNRELIABLE — fire sits in terrain-driven wind zone (U ${fmt2(maxU)})</span>`;
+  }
+}
+
+// ── entry points ─────────────────────────────────────
+async function terrLoadAndCompute(){
+  terrInitMap();
+  $('terr-btn').disabled = true;
+  try {
+    const ok = await terrLoadDEM();
+    if(!ok){ $('terr-btn').disabled=false; return; }
+    const m = window.__m;
+    const windDir = m ? m.windDir : 270;
+    $('terr-status').textContent = 'Computing uncertainty field …';
+    await new Promise(r => setTimeout(r, 20));
+    terrComputeU(windDir);
+    terrRenderOverlay();
+    terrStats();
+    terrFirePoints();
+    terrWindGrid().catch(e => console.warn('wind grid failed:', e));
+    $('terr-status').textContent = `Layer live — computed for forecast wind ${Math.round(windDir)}°. Click map to probe.`;
+    $('terr-btn').textContent = '↻ RECOMPUTE FOR CURRENT WIND';
+  } catch(e){
+    console.error('terrain layer failed:', e);
+    $('terr-status').textContent = 'Terrain layer error — see console.';
+    window.TERR_STATUS = 'ERROR';
+  }
+  $('terr-btn').disabled = false;
+}
+
+// called at the end of each init() — refreshes layer if DEM already loaded
+function terrainOnData(){
+  terrInitMap();
+  if(!TERR.demLoaded || !window.__m) return;
+  terrComputeU(window.__m.windDir);
+  terrRenderOverlay();
+  terrStats();
+  terrFirePoints();
+  terrWindGrid().catch(()=>{});
+  $('terr-status').textContent = `Layer refreshed — wind ${Math.round(window.__m.windDir)}°.`;
+}
+
+// ══════════════════════════════════════════════════════
+// GLOBAL NODE MODULE (v0.3)
+// Any point on Earth becomes a LoPAS node: DEM, weather,
+// FIRMS bbox and uncertainty layer all follow the center.
+// ══════════════════════════════════════════════════════
+
+function setAnalysisCenter(lat, lon, label){
+  lat = Math.max(-65, Math.min(65, lat));   // mercator DEM tiles unreliable near poles
+  lon = ((lon + 540) % 360) - 180;
+  COORD = { lat, lon };
+  const dLat = 0.55;
+  const dLon = Math.min(1.5, 0.55 / Math.max(0.2, Math.cos(lat*Math.PI/180)));
+  TERR.bbox = { w:lon-dLon, s:lat-dLat, e:lon+dLon, n:lat+dLat };
+  BBOX = `${(lon-dLon).toFixed(2)},${(lat-dLat).toFixed(2)},${(lon+dLon).toFixed(2)},${(lat+dLat).toFixed(2)}`;
+
+  TERR.demLoaded = false; TERR.demLoading = false;
+  TERR.elev = null; TERR.U = null; TERR.maxFireU = null;
+  window.TERR_STATUS = 'PENDING';
+  if(TERR.overlay){ TERR.map.removeLayer(TERR.overlay); TERR.overlay = null; }
+  if(TERR.rect) TERR.rect.setBounds([[TERR.bbox.s,TERR.bbox.w],[TERR.bbox.n,TERR.bbox.e]]);
+  if(TERR.map) TERR.map.setView([lat,lon], 9);
+
+  $('hdr-coord').textContent =
+    `${Math.abs(lat).toFixed(2)}°${lat>=0?'N':'S'}  ${Math.abs(lon).toFixed(2)}°${lon>=0?'E':'W'} — ${label||'Custom Node'}`;
+  $('terr-btn').textContent = '⛰ LOAD TERRAIN + COMPUTE';
+  $('terr-mean').textContent = '—'; $('terr-high').textContent = '—';
+  $('terr-fireu').textContent = '—'; $('terr-wind').textContent = '—';
+  $('terr-status').textContent = 'New node set — fetching weather + fire data, then loading terrain …';
+
+  init().then(() => terrLoadAndCompute());
+}
+
+function useMapCenter(){
+  terrInitMap();
+  const c = TERR.map.getCenter();
+  setAnalysisCenter(c.lat, c.lng, 'Map Center Node');
+}
+
+function useMyPosition(){
+  terrInitMap();
+  if(!navigator.geolocation){
+    $('terr-status').textContent = 'Geolocation not supported by this browser.';
+    return;
+  }
+  $('terr-status').textContent = 'Requesting position … (allow location access)';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude:lat, longitude:lon, accuracy } = pos.coords;
+    if(TERR.userMarker) TERR.map.removeLayer(TERR.userMarker);
+    if(TERR.userCircle) TERR.map.removeLayer(TERR.userCircle);
+    TERR.userMarker = L.marker([lat,lon]).addTo(TERR.map);
+    TERR.userCircle = L.circle([lat,lon], {
+      radius: Math.max(accuracy, 20), color:'#00f09a', weight:1, fillColor:'#00f09a', fillOpacity:0.08
+    }).addTo(TERR.map);
+    setAnalysisCenter(lat, lon, 'My Position Node');
+  }, err => {
+    $('terr-status').textContent = 'Position unavailable: ' +
+      (err.code === 1 ? 'permission denied — HTTPS + location access required' : err.message);
+  }, { enableHighAccuracy:true, timeout:15000, maximumAge:60000 });
+}
+
 </script>
 </body>
 </html>
