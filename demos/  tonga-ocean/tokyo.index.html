@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoPAS Ocean Translator v0.3 — Tokyo Bay Node</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;500;600;700;900&display=swap');
+
+:root {
+  --bg:      #03080e;
+  --bg2:     #060f18;
+  --bg3:     #091522;
+  --border:  #0d2c45;
+  --accent:  #00c8f0;
+  --green:   #00f09a;
+  --warn:    #f0b800;
+  --crit:    #f03050;
+  --dim:     #163350;
+  --text:    #bddcf0;
+  --textdim: #3a6080;
+  --mono:    'Space Mono', monospace;
+  --sans:    'Barlow Condensed', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+}
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(0,160,220,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,160,220,.025) 1px,transparent 1px);
+  background-size:48px 48px;
+  pointer-events:none; z-index:0;
+}
+.shell { position:relative; z-index:2; max-width:1080px; margin:0 auto; padding:20px 18px; }
+
+/* HEADER */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding-bottom:14px; margin-bottom:20px;
+  border-bottom:1px solid var(--border);
+  flex-wrap:wrap; gap:10px;
+}
+.logo .sys { font-family:var(--mono); font-size:10px; color:var(--textdim); letter-spacing:.18em; text-transform:uppercase; }
+.logo .name { font-family:var(--mono); font-size:20px; color:var(--accent); letter-spacing:.06em; font-weight:700; }
+.header-right { font-family:var(--mono); font-size:9px; color:var(--textdim); text-align:right; line-height:1.9; }
+.header-right .coord { color:var(--accent); font-size:11px; }
+.dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 5px var(--green); animation:blink 2s ease-in-out infinite; margin-right:4px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ══ ACTION ZONE ══ */
+.action-zone {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--warn);
+  border-radius: 3px;
+  padding: 22px 24px 18px;
+  margin-bottom: 14px;
+  position: relative; overflow: hidden;
+  animation: fi .4s ease both;
+}
+.action-zone::after {
+  content:''; position:absolute; top:0; right:0; bottom:0; width:3px;
+  background: linear-gradient(180deg, var(--warn), transparent); opacity:.4;
+}
+.action-header { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+.action-tag { font-family:var(--mono); font-size:9px; letter-spacing:.2em; color:var(--textdim); text-transform:uppercase; }
+.action-verb {
+  font-family:var(--sans); font-size:64px; font-weight:900;
+  line-height:.9; letter-spacing:-.01em; color: var(--warn);
+  text-shadow: 0 0 40px rgba(240,184,0,.25);
+}
+.action-sub { font-size:16px; font-weight:500; color:var(--text); letter-spacing:.03em; margin-top:6px; }
+
+.action-reason {
+  font-family:var(--mono); font-size:10px; color:var(--textdim); line-height:1.8;
+  border-top:1px solid var(--border); padding-top:12px; margin-top:4px;
+}
+.action-reason span { color:var(--warn); }
+
+.action-meta { display:flex; gap:20px; margin-top:12px; flex-wrap:wrap; }
+.ameta { font-family:var(--mono); font-size:9px; color:var(--textdim); letter-spacing:.1em; }
+.ameta strong { font-size:15px; display:block; margin-top:1px; }
+.val-warn { color:var(--warn); }
+.val-ok   { color:var(--green); }
+.val-info { color:var(--accent); }
+
+.conf-bar { margin-top:14px; display:flex; align-items:center; gap:10px; }
+.conf-label { font-family:var(--mono); font-size:9px; color:var(--textdim); width:80px; }
+.conf-track { flex:1; height:3px; background:var(--dim); border-radius:2px; }
+.conf-fill  { height:100%; background:var(--warn); border-radius:2px; width:78%; }
+.conf-num   { font-family:var(--mono); font-size:10px; color:var(--warn); }
+
+/* TRIGGER ROW */
+.trigger-row { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; animation:fi .4s .08s ease both; }
+.trigger {
+  font-family:var(--mono); font-size:9px; letter-spacing:.08em;
+  padding:5px 11px; border-radius:2px;
+  border:1px solid var(--border); color:var(--textdim); background:var(--bg3);
+  display:flex; align-items:center; gap:6px;
+}
+.trigger.active { border-color:var(--warn); color:var(--warn); background:rgba(240,184,0,.06); }
+.trigger.next   { border-color:var(--crit); color:var(--crit); background:rgba(240,48,80,.06); }
+
+/* BODY GRID */
+.body-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+@media(max-width:700px){ .body-grid{ grid-template-columns:1fr; } }
+
+.card {
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:3px; padding:16px; position:relative; overflow:hidden;
+}
+.card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent); opacity:.2;
+}
+.clabel { font-family:var(--mono); font-size:9px; letter-spacing:.15em; color:var(--textdim); text-transform:uppercase; margin-bottom:10px; }
+.ctitle { font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--accent); text-transform:uppercase; margin-bottom:14px; }
+
+/* SST */
+.sst-main { display:flex; align-items:flex-end; gap:10px; margin-bottom:12px; }
+.sst-big { font-family:var(--mono); font-size:44px; font-weight:700; line-height:1; color:var(--warn); }
+
+.row-bar { margin-bottom:8px; }
+.row-bar-head { display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; color:var(--textdim); margin-bottom:3px; }
+.bar-track { height:5px; background:var(--dim); border-radius:2px; overflow:hidden; }
+.bar-fill  { height:100%; border-radius:2px; }
+.bf-green { background:linear-gradient(90deg,#008855,var(--green)); }
+.bf-blue  { background:linear-gradient(90deg,#005577,var(--accent)); }
+.bf-warn  { background:linear-gradient(90deg,#887700,var(--warn)); }
+
+.hgd-result {
+  margin-top:12px; font-family:var(--mono); font-size:10px;
+  padding:8px 10px; background:var(--bg3); border:1px solid var(--border);
+  border-radius:2px; line-height:1.9;
+}
+.hgd-band { display:inline-block; padding:2px 8px; border-radius:2px; font-size:10px; letter-spacing:.1em; }
+.band-bal   { color:var(--green);  background:rgba(0,240,154,.08); border:1px solid var(--green); }
+.band-amp   { color:var(--warn);   background:rgba(240,184,0,.08); border:1px solid var(--warn); }
+.band-blind { color:var(--crit);   background:rgba(240,48,80,.08);  border:1px solid var(--crit); }
+
+/* INDICATORS */
+.ind-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.ind { background:var(--bg3); border:1px solid var(--border); border-radius:2px; padding:10px 12px; }
+.ind-name { font-family:var(--mono); font-size:9px; color:var(--textdim); letter-spacing:.1em; margin-bottom:3px; }
+.ind-val  { font-family:var(--mono); font-size:26px; font-weight:700; line-height:1; }
+.ind-desc { font-size:10px; color:var(--textdim); margin-top:3px; }
+.ind-bar  { height:2px; border-radius:1px; margin-top:6px; }
+
+/* PHASE */
+.phase-segs { display:flex; gap:4px; margin:10px 0 8px; }
+.pseg {
+  flex:1; height:26px; border-radius:2px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:8px; letter-spacing:.05em;
+  color:var(--textdim); background:var(--bg3); border:1px solid var(--border);
+}
+.pseg.past   { border-color:rgba(0,240,154,.25); color:rgba(0,240,154,.4); background:rgba(0,240,154,.04); }
+.pseg.active { border-color:var(--accent); color:var(--accent); background:rgba(0,200,240,.1); box-shadow:0 0 8px rgba(0,200,240,.15); }
+.pseg.near   { border-color:rgba(240,184,0,.4); color:rgba(240,184,0,.6); }
+
+.pst-row { display:flex; gap:20px; margin-top:6px; }
+.pst-item { font-family:var(--mono); font-size:9px; color:var(--textdim); }
+.pst-item strong { display:block; font-size:16px; margin-top:1px; }
+
+/* SPARKLINE */
+.spark-wrap { margin-top:14px; }
+canvas.spark { width:100%; height:58px; display:block; }
+.spark-foot { display:flex; justify-content:space-between; font-family:var(--mono); font-size:8px; color:var(--textdim); margin-top:3px; }
+
+/* SOURCE TABLE */
+.src-tbl { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:10px; }
+.src-tbl th { text-align:left; color:var(--textdim); font-weight:400; letter-spacing:.1em; padding:4px 0 8px; border-bottom:1px solid var(--border); }
+.src-tbl td { padding:7px 6px 7px 0; border-bottom:1px solid rgba(13,44,69,.5); }
+.sdot { display:inline-block; width:5px; height:5px; border-radius:50%; margin-right:5px; }
+.sdot-ok  { background:var(--green); box-shadow:0 0 3px var(--green); }
+.sdot-lag { background:var(--warn); }
+
+/* FOOTER */
+footer {
+  margin-top:20px; padding-top:12px; border-top:1px solid var(--border);
+  display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;
+  font-family:var(--mono); font-size:8px; color:var(--textdim);
+}
+
+.body-grid .card:nth-child(1){ animation:fi .4s .14s ease both; }
+.body-grid .card:nth-child(2){ animation:fi .4s .18s ease both; }
+.body-grid .card:nth-child(3){ animation:fi .4s .22s ease both; }
+.body-grid .card:nth-child(4){ animation:fi .4s .26s ease both; }
+@keyframes fi { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+/* ── SPATIAL LAYER (v0.3) ── */
+#ocn-map {
+  width:100%; height:480px; border:1px solid var(--border); border-radius:2px;
+  background:#020610; margin-top:10px;
+}
+.ocn-toolbar {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px;
+  font-family:var(--mono); font-size:9px; color:var(--textdim);
+}
+.ocn-toolbar label { cursor:pointer; letter-spacing:.08em; }
+.ocn-toolbar input { accent-color:var(--accent); vertical-align:-2px; }
+.ocn-btn {
+  background:var(--bg3); border:1px solid var(--border); color:var(--accent);
+  font-family:var(--mono); font-size:9px; letter-spacing:.12em; padding:6px 12px;
+  border-radius:2px; cursor:pointer; text-transform:uppercase;
+}
+.ocn-btn:hover { border-color:var(--accent); }
+.ocn-btn:disabled { color:var(--textdim); cursor:default; }
+.ocn-stats { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px;
+  font-family:var(--mono); font-size:9px; color:var(--textdim); }
+.ocn-stat strong { display:block; font-size:16px; margin-top:2px; color:var(--warn); }
+.ocn-legend { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  font-family:var(--mono); font-size:9px; color:var(--textdim); margin-top:10px; }
+.ocn-legend .lg { letter-spacing:.05em; }
+.ocn-ramp { width:110px; height:8px; border:1px solid var(--border); border-radius:2px;
+  background:linear-gradient(90deg, rgba(0,200,240,.25), rgba(240,184,0,.7) 55%, rgba(240,48,80,.9)); }
+.ocn-note { margin-top:12px; padding:8px 10px; background:var(--bg3); border:1px solid var(--border);
+  border-radius:2px; font-family:var(--mono); font-size:9px; color:var(--textdim); line-height:1.9; }
+.ocn-note .hl { color:var(--accent); }
+.wind-arrow-icon { pointer-events:none; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background:var(--bg2); color:var(--text); border:1px solid var(--border);
+  font-family:var(--mono); font-size:10px; border-radius:2px; }
+.leaflet-popup-content { margin:10px 12px; line-height:1.9; }
+.leaflet-control-layers, .leaflet-bar a {
+  background:var(--bg2) !important; color:var(--text) !important; border-color:var(--border) !important; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header>
+  <div class="logo">
+    <div class="sys">LoPAS / Ocean Translator v0.3 — Tokyo Bay Node</div>
+    <div class="name">FIELD OBSERVER</div>
+  </div>
+  <div class="header-right">
+    <span class="dot"></span>CYCLE ACTIVE &nbsp;|&nbsp;
+    <span class="coord" id="hdr-coord">35.40°N &nbsp;139.80°E — Tokyo Bay (default)</span><br>
+    <span id="ts">—</span> &nbsp;|&nbsp; El Niño Watch · NOAA CPC · 82% emergence Jun–Jul 2026
+  </div>
+</header>
+
+<!-- ══ SPATIAL LAYER — WHERE IS IT DANGEROUS? ══ -->
+<div class="card" style="margin-bottom:14px">
+  <div class="clabel">spatial · wind → wave → energy → coastal exposure → action</div>
+  <div class="ctitle">Coastal Exposure Map</div>
+
+  <div class="ocn-toolbar">
+    <button class="ocn-btn" id="ocn-btn" onclick="ocnLoadAndCompute()">🌊 LOAD OCEAN + COMPUTE</button>
+    <button class="ocn-btn" onclick="useMyPosition()">📍 MY POSITION</button>
+    <button class="ocn-btn" onclick="useMapCenter()">⌖ USE MAP CENTER</button>
+    <span id="ocn-status">Tokyo Bay default — load to test bay / outer-coast wave contrast</span>
+  </div>
+
+  <div id="ocn-map"></div>
+
+  <div class="ocn-toolbar" style="margin-top:8px">
+    <label><input type="checkbox" id="tg-arrows" checked onchange="ocnApplyToggles()"> WIND + WAVE VECTORS</label>
+    <label><input type="checkbox" id="tg-energy" checked onchange="ocnApplyToggles()"> WAVE ENERGY</label>
+    <label><input type="checkbox" id="tg-expo" checked onchange="ocnApplyToggles()"> COASTAL EXPOSURE</label>
+    <label><input type="checkbox" id="tg-action" checked onchange="ocnApplyToggles()"> ACTION</label>
+  </div>
+
+  <div class="ocn-legend">
+    <span>ENERGY</span><div class="ocn-ramp"></div>
+    <span class="lg" style="color:#2090ff">■ SHELTERED</span>
+    <span class="lg" style="color:#f0b800">■ CAUTION</span>
+    <span class="lg" style="color:#f03050">■ EXPOSED</span>
+    <span class="lg" style="color:#b060ff">■ ENCLOSED/REFLECTIVE</span>
+    <span class="lg" style="color:#00c8f0">→ wind waves</span>
+    <span class="lg" style="color:#b060ff">⇢ swell</span>
+    <span class="lg" style="color:#8aa8bf">→ wind 10m</span>
+  </div>
+
+  <div class="ocn-stats">
+    <div class="ocn-stat">MAX COAST EXPOSURE<strong id="ocn-maxexpo">—</strong></div>
+    <div class="ocn-stat">EXPOSED COAST<strong id="ocn-pct" style="color:var(--accent)">—</strong></div>
+    <div class="ocn-stat">PEAK WAVE ENERGY<strong id="ocn-peak" style="color:var(--accent)">—</strong></div>
+    <div class="ocn-stat">WIND↔WAVE MISALIGN<strong id="ocn-mis" style="color:var(--textdim)">—</strong></div>
+    <div class="ocn-stat">AREA ACTION<strong id="ocn-action" style="color:var(--warn)">—</strong></div>
+  </div>
+
+  <div class="ocn-note">
+    THE TRANSLATION CHAIN: wind and waves are shown <span class="hl">separately</span> because they are not the same thing —
+    swell arrives from storms far away, and a coast sheltered from today's wind can be exposed to yesterday's swell
+    (watch the WIND↔WAVE MISALIGN number). Wave energy flux (∝ H²·T) is projected onto each coast cell:
+    incidence angle × shoaling (shallow shelf) × headland focusing. <span class="hl">The map shows whether the COAST
+    is dangerous, not whether the wind is strong.</span><br>
+    TOKYO BAY NOTE: global wave grids can over-assign offshore wave values to inner-bay coastlines. Check whether bay-inner wave labels differ from the outer Boso / Sagami side before treating the exposure map as meaningful.<br>
+    HONEST LIMITS: heuristic layer, not a SWAN/WAM wave model · bathymetry is ETOPO1-based and coarse (km-scale)
+    near shore · <span style="color:#b060ff">ENCLOSED/REFLECTIVE</span> flags enclosed water receiving energy
+    (harbor reflection candidates), not a resonance computation. Recompute after sea state changes.
+  </div>
+</div>
+
+<!-- ══ ACTION ZONE — TOP ══ -->
+<div class="action-zone">
+  <div class="action-header">
+    <div>
+      <div class="action-tag">→ recommended action</div>
+      <div class="action-verb" id="action-verb">MONITOR</div>
+      <div class="action-sub" id="action-sub">Increase observation cycle. Prepare escalation protocol.</div>
+    </div>
+  </div>
+
+  <div class="action-meta">
+    <div class="ameta">PHASE<strong class="val-info">DRIFT-BUILDING</strong></div>
+    <div class="ameta">PST<strong class="val-warn">0.38</strong></div>
+    <div class="ameta">→ COB @ <strong class="val-warn">0.65 ▲</strong></div>
+    <div class="ameta">SCI<strong class="val-warn">0.42</strong></div>
+    <div class="ameta">SST DELTA<strong class="val-warn">+0.7°C</strong></div>
+    <div class="ameta">CONFIDENCE<strong class="val-ok">0.81</strong></div>
+  </div>
+
+  <div class="action-reason">
+    WHY: <span>Local SST leading global model by +0.7°C</span> ·
+    CPTI 0.55 (elevated) · PST accelerating (<span>δ +0.031/cycle</span>) ·
+    El Niño onset expected within 4–6 weeks · HGD BALANCED — local signal reliable<br>
+    IF PST &gt; 0.65 → escalate to <span>PREPARE</span> &nbsp;|&nbsp;
+    IF SST delta &gt; +1.5°C → escalate to <span>CRITICAL / MOVE</span>
+  </div>
+
+  <div class="conf-bar">
+    <div class="conf-label">CONFIDENCE</div>
+    <div class="conf-track"><div class="conf-fill"></div></div>
+    <div class="conf-num">0.81</div>
+  </div>
+</div>
+
+<!-- TRIGGER WATCH -->
+<div class="trigger-row">
+  <div class="trigger active">⚡ SST ANOMALY +0.7°C</div>
+  <div class="trigger active">⚡ ENSO WATCH DECLARED</div>
+  <div class="trigger active">↑ PST ACCELERATING</div>
+  <div class="trigger next">▲ NEXT: PST &gt; 0.65 → COB</div>
+  <div class="trigger next">▲ NEXT: SST &gt; +1.2°C → CPTI ESCALATE</div>
+</div>
+
+<!-- BODY -->
+<div class="body-grid">
+
+  <!-- SST + HGD -->
+  <div class="card">
+    <div class="clabel">observation · sea surface temperature</div>
+    <div class="ctitle">SST + Field Heat Gap (HGD)</div>
+    <div class="sst-main">
+      <div class="sst-big" id="sst-big">—</div>
+      <div>
+        <div style="font-size:22px;color:var(--text);font-weight:600">°C anomaly</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--textdim)">vs 30-day local mean (live)</div>
+      </div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>LOCAL · Open-Meteo marine (live)</span><span style="color:var(--green)" id="sst-local">—</span></div>
+      <div class="bar-track"><div class="bar-fill bf-green" style="width:71%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>GLOBAL · CMEMS grid</span><span style="color:var(--accent)">27.7°C</span></div>
+      <div class="bar-track"><div class="bar-fill bf-blue" style="width:55%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>Field quality (data freshness)</span><span style="color:var(--green)">0.78</span></div>
+      <div class="bar-track"><div class="bar-fill bf-green" style="width:78%"></div></div>
+    </div>
+    <div class="row-bar">
+      <div class="row-bar-head"><span>Global heat (NOAA model signal)</span><span style="color:var(--warn)">0.52</span></div>
+      <div class="bar-track"><div class="bar-fill bf-warn" style="width:52%"></div></div>
+    </div>
+    <div class="hgd-result">
+      HGD = (0.62 × 0.78) − 0.52 = <strong style="color:var(--accent)">−0.04</strong>
+      &nbsp;<span class="hgd-band band-bal">BALANCED</span><br>
+      <span style="color:var(--textdim)">Local signal reliable · TRS_adj = 0.61 × 0.97 = </span>
+      <span style="color:var(--green)">0.59</span>
+    </div>
+    <div class="spark-wrap">
+      <div class="clabel" style="margin-bottom:4px;margin-top:14px">SST vs 30-day mean — live local trace</div>
+      <canvas class="spark" id="spark" width="600" height="58"></canvas>
+      <div class="spark-foot" id="spark-foot">
+        <span>—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LoPAS Indicators -->
+  <div class="card">
+    <div class="clabel">lopas · core indicators</div>
+    <div class="ctitle">System State</div>
+    <div class="ind-grid">
+      <div class="ind">
+        <div class="ind-name">SCI — System Crisis</div>
+        <div class="ind-val" style="color:var(--warn)" id="sci-val">0.42</div>
+        <div class="ind-desc">Elevated · rising</div>
+        <div class="ind-bar bf-warn" style="width:42%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">TRS — Resonance</div>
+        <div class="ind-val" style="color:var(--green)">0.61</div>
+        <div class="ind-desc">Stable · OFFENSE ok</div>
+        <div class="ind-bar bf-green" style="width:61%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">RAR — Reality Align</div>
+        <div class="ind-val" style="color:var(--accent)">0.74</div>
+        <div class="ind-desc">Forecast on track</div>
+        <div class="ind-bar bf-blue" style="width:74%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">CPTI — Phase Trans.</div>
+        <div class="ind-val" style="color:var(--warn)">0.55</div>
+        <div class="ind-desc">Transition risk ↑</div>
+        <div class="ind-bar bf-warn" style="width:55%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">OSI — Obs. Slippage</div>
+        <div class="ind-val" style="color:var(--green)">0.14</div>
+        <div class="ind-desc">Low · data fresh</div>
+        <div class="ind-bar bf-green" style="width:14%"></div>
+      </div>
+      <div class="ind">
+        <div class="ind-name">MCI — Coherence</div>
+        <div class="ind-val" style="color:var(--accent)">0.68</div>
+        <div class="ind-desc">Signal consistent</div>
+        <div class="ind-bar bf-blue" style="width:68%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase Transition -->
+  <div class="card">
+    <div class="clabel">lptm · phase transition model</div>
+    <div class="ctitle">Phase Band</div>
+    <div class="phase-segs">
+      <div class="pseg past">STABLE</div>
+      <div class="pseg active">DRIFT</div>
+      <div class="pseg near">COB</div>
+      <div class="pseg">ESC</div>
+      <div class="pseg">BREAK</div>
+    </div>
+    <div class="pst-row">
+      <div class="pst-item">PST<strong style="color:var(--accent)">0.38</strong></div>
+      <div class="pst-item">δPST<strong style="color:var(--warn)">+0.031</strong></div>
+      <div class="pst-item">δ²PST<strong style="color:var(--textdim)">+0.004</strong></div>
+      <div class="pst-item">LAYER<strong style="color:var(--accent)">L1→L2</strong></div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="row-bar">
+        <div class="row-bar-head">
+          <span>PST position</span><span style="color:var(--crit)">COB threshold @ 0.65</span>
+        </div>
+        <div class="bar-track" style="position:relative;height:5px">
+          <div class="bar-fill bf-blue" style="width:38%;height:100%"></div>
+          <div style="position:absolute;top:-3px;left:65%;width:1px;height:11px;background:var(--crit);opacity:.8"></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:2;">
+      AT COB → action escalates to <span style="color:var(--crit)">PREPARE</span><br>
+      AT ESCALATION → action escalates to <span style="color:var(--crit)">MOVE</span><br>
+      AT BREAKOUT → <span style="color:var(--crit)">CRITICAL RESPONSE</span>
+    </div>
+  </div>
+
+  <!-- Sources -->
+  <div class="card">
+    <div class="clabel">data sources · active feeds</div>
+    <div class="ctitle">Signal Origin</div>
+    <table class="src-tbl">
+      <thead>
+        <tr><th>Provider</th><th>Data type</th><th>Layer</th><th>Lag</th></tr>
+      </thead>
+      <tbody id="src-tbody">
+        <tr>
+          <td><span class="sdot sdot-ok"></span>TAO Buoy</td>
+          <td>SST local · subsurface</td>
+          <td style="color:var(--green)">LOCAL</td>
+          <td style="color:var(--green)">1.2h</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-ok"></span>PDH / CliDE</td>
+          <td>Tonga Met obs</td>
+          <td style="color:var(--green)">LOCAL</td>
+          <td style="color:var(--green)">2.4h</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-ok"></span>Open-Meteo</td>
+          <td>Marine surface</td>
+          <td style="color:var(--accent)">REGIONAL</td>
+          <td style="color:var(--green)">0.9h</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-ok"></span>CMEMS</td>
+          <td>Wave · current · SST grid</td>
+          <td style="color:var(--accent)">GLOBAL</td>
+          <td style="color:var(--green)">3.1h</td>
+        </tr>
+        <tr>
+          <td><span class="sdot sdot-lag"></span>NOAA GFS</td>
+          <td>Wind · pressure</td>
+          <td style="color:var(--accent)">GLOBAL</td>
+          <td style="color:var(--warn)">5.8h</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--textdim);line-height:1.9;border-top:1px solid var(--border);padding-top:10px;">
+      LOCAL feeds: <span style="color:var(--green)">2 active</span>
+      &nbsp;·&nbsp; GLOBAL: <span style="color:var(--accent)">3 active</span><br>
+      HGD: LOCAL − GLOBAL gap detection enabled<br>
+      Anomaly flag: <span style="color:var(--warn)">TRUE</span>
+      &nbsp;·&nbsp; Uncertainty: <span style="color:var(--warn)">0.19</span>
+      &nbsp;·&nbsp; Confidence: <span style="color:var(--green)">0.81</span>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>LoPAS Ocean Translator v0.3 — Tokyo Bay Node — <em>wind · wave · SST · bathymetry LIVE / phase indices (PST · TRS · CPTI …) demo values</em></span>
+  <span>PFS v0.3 · LPTM v2 · HGD Module · Core Schema v0.1</span>
+</footer>
+</div>
+
+<script>
+(function tick(){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  document.getElementById('ts').textContent=
+    `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} `+
+    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
+  setTimeout(tick,1000);
+})();
+
+(function(){
+  const c=document.getElementById('spark');
+  const dpr=window.devicePixelRatio||1;
+  c.width=c.offsetWidth*dpr; c.height=c.offsetHeight*dpr;
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr);
+  const W=c.offsetWidth, H=c.offsetHeight;
+  const data=[.08,.11,.09,.13,.15,.12,.18,.20,.22,.19,.25,.28,.30,.27,
+              .33,.35,.38,.40,.37,.42,.45,.48,.50,.53,.55,.58,.62,.65,.68,.70];
+  const mn=-.1, mx=1.0;
+  const py=v=>H-((v-mn)/(mx-mn))*H*.82-H*.06;
+  const pts=data.map((v,i)=>({x:(i/(data.length-1))*W,y:py(v)}));
+  ctx.beginPath(); ctx.moveTo(0,py(0)); ctx.lineTo(W,py(0));
+  ctx.strokeStyle='rgba(58,96,128,.5)'; ctx.lineWidth=1;
+  ctx.setLineDash([3,4]); ctx.stroke(); ctx.setLineDash([]);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(240,184,0,.2)'); g.addColorStop(1,'rgba(240,184,0,0)');
+  ctx.beginPath(); ctx.moveTo(pts[0].x,H);
+  pts.forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.lineTo(pts[pts.length-1].x,H); ctx.closePath();
+  ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle='#f0b800'; ctx.lineWidth=1.5; ctx.stroke();
+  const last=pts[pts.length-1];
+  ctx.beginPath(); ctx.arc(last.x,last.y,4,0,Math.PI*2);
+  ctx.fillStyle='#f0b800'; ctx.fill();
+  ctx.beginPath(); ctx.arc(last.x,last.y,8,0,Math.PI*2);
+  ctx.strokeStyle='rgba(240,184,0,.35)'; ctx.lineWidth=1; ctx.stroke();
+})();
+
+
+
+// ══════════════════════════════════════════════════════
+// OCEAN SPATIAL MODULE (v0.3)
+// Wind → Wave → Wave Energy → Coastal Exposure → Action
+// Bathymetry: AWS Terrain Tiles (terrarium; ocean = ETOPO1,
+// coarse near coast). Waves: Open-Meteo Marine (~5 km grid).
+// Heuristic translation layer — NOT a SWAN/WAM wave model.
+// ══════════════════════════════════════════════════════
+
+let COORD = { lat: 35.40, lon: 139.80 };     // default: Tokyo Bay (movable)
+const OCN = {
+  bbox: null, z: 10,
+  demLoaded:false, demLoading:false,
+  W:0,H:0,x0:0,y0:0,
+  elev:null, M1:null, M2:null, coast:null,     // coast: Int32Array of cell indices
+  rowLat:null, colLon:null,
+  map:null, energyOv:null, expoOv:null, rect:null,
+  arrowLayer:null, actionLayer:null, userMarker:null, userCircle:null,
+  marine:null, wind:null, sstSeries:null,
+  maxScore:0, peakE:0, pctExposed:0, misalign:null, action:'MONITOR',
+};
+window.OCN_MARINE = 'PENDING'; window.OCN_TERRAIN = 'PENDING'; window.OCN_WIND = 'PENDING';
+const $ = id => document.getElementById(id);
+const fmt2 = v => v.toFixed(2);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function o_lon2tx(lon,z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
+function o_lat2ty(lat,z){ const r=lat*Math.PI/180;
+  return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z)); }
+function o_tx2lon(x,z){ return x/Math.pow(2,z)*360-180; }
+function o_ty2lat(y,z){ const n=Math.PI-2*Math.PI*y/Math.pow(2,z);
+  return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
+function o_res(lat){ return 156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,OCN.z); }
+
+function ocnSetBbox(){
+  const dLat = 0.55;
+  const dLon = Math.min(1.5, 0.55/Math.max(0.2, Math.cos(COORD.lat*Math.PI/180)));
+  OCN.bbox = { w:COORD.lon-dLon, s:COORD.lat-dLat, e:COORD.lon+dLon, n:COORD.lat+dLat };
+}
+
+// ── map ──────────────────────────────────────────────
+function ocnInitMap(){
+  if(OCN.map || typeof L === 'undefined') return;
+  ocnSetBbox();
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom:16, attribution:'Imagery © Esri' });
+  const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { maxZoom:16, attribution:'© OSM © CARTO' });
+  OCN.map = L.map('ocn-map', { center:[COORD.lat, COORD.lon], zoom:9, layers:[sat] });
+  // stacking: tiles(200) < energy(350) < exposure(380) < arrows/action markers(600) < popups(700)
+  OCN.map.createPane('energy');   OCN.map.getPane('energy').style.zIndex = 350;
+  OCN.map.getPane('energy').style.pointerEvents = 'none';
+  OCN.map.createPane('exposure'); OCN.map.getPane('exposure').style.zIndex = 380;
+  OCN.map.getPane('exposure').style.pointerEvents = 'none';
+  L.control.layers({ 'SATELLITE':sat, 'DARK':dark }, null, { position:'topright' }).addTo(OCN.map);
+  OCN.rect = L.rectangle([[OCN.bbox.s,OCN.bbox.w],[OCN.bbox.n,OCN.bbox.e]],
+    { color:'#00c8f0', weight:1, fill:false, dashArray:'4 4', interactive:false }).addTo(OCN.map);
+  OCN.arrowLayer  = L.layerGroup().addTo(OCN.map);
+  OCN.actionLayer = L.layerGroup().addTo(OCN.map);
+  OCN.map.on('click', ocnProbe);
+}
+
+// ── bathymetry / DEM ─────────────────────────────────
+async function ocnLoadDEM(){
+  if(OCN.demLoaded || OCN.demLoading) return OCN.demLoaded;
+  OCN.demLoading = true;
+  const z = OCN.z;
+  const x0 = o_lon2tx(OCN.bbox.w,z), x1 = o_lon2tx(OCN.bbox.e,z);
+  const y0 = o_lat2ty(OCN.bbox.n,z), y1 = o_lat2ty(OCN.bbox.s,z);
+  const nx=x1-x0+1, ny=y1-y0+1, total=nx*ny, W=nx*256, H=ny*256;
+  const cnv=document.createElement('canvas'); cnv.width=W; cnv.height=H;
+  const ctx=cnv.getContext('2d',{willReadFrequently:true});
+  let done=0, failed=0;
+  const nT=Math.pow(2,z), wrapT=t=>((t%nT)+nT)%nT;   // antimeridian: wrap tile x in URL only
+  const jobs=[];
+  for(let ty=y0; ty<=y1; ty++) for(let tx=x0; tx<=x1; tx++){
+    jobs.push(fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${wrapT(tx)}/${ty}.png`)
+      .then(r=>{ if(!r.ok) throw 0; return r.blob(); })
+      .then(b=>createImageBitmap(b))
+      .then(img=>{ ctx.drawImage(img,(tx-x0)*256,(ty-y0)*256); })
+      .catch(()=>{ failed++; })
+      .finally(()=>{ done++; $('ocn-status').textContent=`Fetching bathymetry tiles … ${done}/${total}`; }));
+  }
+  await Promise.all(jobs);
+  if(failed > total/2){
+    $('ocn-status').textContent = `Bathymetry fetch failed (${failed}/${total}). Retry when online.`;
+    window.OCN_TERRAIN='ERROR'; OCN.demLoading=false; return false;
+  }
+  $('ocn-status').textContent='Decoding bathymetry …';
+  await new Promise(r=>setTimeout(r,20));
+  const px = ctx.getImageData(0,0,W,H).data;
+  const elev = new Float32Array(W*H);
+  for(let i=0,j=0;i<W*H;i++,j+=4) elev[i]=px[j]*256+px[j+1]+px[j+2]/256-32768;
+  Object.assign(OCN,{elev,W,H,x0,y0,demLoaded:true,demLoading:false});
+  // per-row lat, per-col lon
+  OCN.rowLat = new Float32Array(H);
+  for(let y=0;y<H;y++) OCN.rowLat[y]=o_ty2lat(y0+(y+0.5)/256, z);
+  OCN.colLon = new Float32Array(W);
+  for(let x=0;x<W;x++) OCN.colLon[x]=o_tx2lon(x0+(x+0.5)/256, z);
+  ocnDeriveMasks();
+  window.OCN_TERRAIN='OK';
+  return true;
+}
+
+// separable box blur (in place-ish), r px, n passes
+function boxBlur(src,W,H,r,passes){
+  let a=src, b=new Float32Array(W*H);
+  for(let p=0;p<passes;p++){
+    // horizontal
+    for(let y=0;y<H;y++){
+      const off=y*W; let s=0;
+      for(let x=-r;x<=r;x++) s+=a[off+clamp(x,0,W-1)];
+      for(let x=0;x<W;x++){
+        b[off+x]=s/(2*r+1);
+        s+=a[off+clamp(x+r+1,0,W-1)]-a[off+clamp(x-r,0,W-1)];
+      }
+    }
+    // vertical
+    for(let x=0;x<W;x++){
+      let s=0;
+      for(let y=-r;y<=r;y++) s+=b[clamp(y,0,H-1)*W+x];
+      for(let y=0;y<H;y++){
+        a[y*W+x]=s/(2*r+1);
+        s+=b[clamp(y+r+1,0,H-1)*W+x]-b[clamp(y-r,0,H-1)*W+x];
+      }
+    }
+  }
+  return a;
+}
+
+function ocnDeriveMasks(){
+  const {elev,W,H}=OCN;
+  // land density fields (1=land, 0=water)
+  const land=new Float32Array(W*H);
+  for(let i=0;i<W*H;i++) land[i]=elev[i]>=0?1:0;
+  OCN.M1 = boxBlur(Float32Array.from(land),W,H,5,2);   // ~600 m — headland/bay
+  OCN.M2 = boxBlur(Float32Array.from(land),W,H,25,2);  // ~3 km  — enclosure/harbor
+  // coast cells = water cells with a land 4-neighbor
+  const coast=[];
+  for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if(elev[i]<0 && (elev[i-1]>=0||elev[i+1]>=0||elev[i-W]>=0||elev[i+W]>=0)) coast.push(i);
+  }
+  OCN.coast = Int32Array.from(coast);
+}
+
+// ── marine + wind grids (3×3 over bbox) ──────────────
+function gridPts(){
+  const lats=[], lons=[];
+  for(let iy=0;iy<3;iy++) for(let ix=0;ix<3;ix++){
+    lats.push(OCN.bbox.s+(iy+0.5)*(OCN.bbox.n-OCN.bbox.s)/3);
+    lons.push(OCN.bbox.w+(ix+0.5)*(OCN.bbox.e-OCN.bbox.w)/3);
+  }
+  return {lats,lons};
+}
+
+async function ocnFetchMarine(){
+  const {lats,lons}=gridPts();
+  const qlon=v=>(((v+540)%360)-180).toFixed(3);      // API needs [-180,180]; map keeps continuous
+  const vars='wave_height,wave_direction,wave_period,'+
+             'wind_wave_height,wind_wave_direction,wind_wave_period,'+
+             'swell_wave_height,swell_wave_direction,swell_wave_period';
+  const url=`https://marine-api.open-meteo.com/v1/marine?latitude=${lats.map(v=>v.toFixed(3)).join(',')}`+
+            `&longitude=${lons.map(qlon).join(',')}&current=${vars}&timezone=UTC`;
+  const res=await fetch(url);
+  if(!res.ok) throw new Error(`marine HTTP ${res.status}`);
+  let d=await res.json(); if(!Array.isArray(d)) d=[d];
+  const pts=d.map((p,k)=>({
+    lat:lats[k], lon:lons[k],
+    valid: p.current && p.current.wave_height!=null,
+    c: p.current||{}
+  }));
+  // fallback map: each idx → nearest valid idx
+  const validIdx=pts.map((p,k)=>p.valid?k:-1).filter(k=>k>=0);
+  if(!validIdx.length) throw new Error('no valid marine points in area');
+  OCN.marineFallback=pts.map((p,k)=>{
+    if(p.valid) return k;
+    let best=validIdx[0],bd=1e9;
+    validIdx.forEach(v=>{const d2=(v%3-k%3)**2+((v/3|0)-(k/3|0))**2; if(d2<bd){bd=d2;best=v;}});
+    return best;
+  });
+  // precompute per-point energetics: travel bearings + flux (kW/m ≈ 0.49·H²·T)
+  pts.forEach(p=>{
+    if(!p.valid) return;
+    const c=p.c;
+    p.travelW=((c.wind_wave_direction??c.wave_direction??0)+180)%360*Math.PI/180;
+    p.Pw=0.49*Math.pow(c.wind_wave_height??0,2)*(c.wind_wave_period??6);
+    p.travelS=((c.swell_wave_direction??c.wave_direction??0)+180)%360*Math.PI/180;
+    p.Ps=0.49*Math.pow(c.swell_wave_height??0,2)*(c.swell_wave_period??8);
+  });
+  OCN.marine=pts;
+  window.OCN_MARINE='OK';
+}
+
+async function ocnFetchWind(){
+  const {lats,lons}=gridPts();
+  const qlon=v=>(((v+540)%360)-180).toFixed(3);
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lats.map(v=>v.toFixed(3)).join(',')}`+
+            `&longitude=${lons.map(qlon).join(',')}`+
+            `&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=UTC`;
+  const res=await fetch(url);
+  if(!res.ok) throw new Error(`wind HTTP ${res.status}`);
+  let d=await res.json(); if(!Array.isArray(d)) d=[d];
+  OCN.wind=d.map((p,k)=>({lat:lats[k],lon:lons[k],spd:p.current.wind_speed_10m,dir:p.current.wind_direction_10m}));
+  window.OCN_WIND='OK';
+}
+
+async function ocnFetchSST(){
+  // Try the current analysis center first. In narrow bays such as Tokyo Bay,
+  // the marine model may occasionally treat the center cell as land. If so,
+  // retry a nearby outer-bay / offshore point to avoid a silent SST panel.
+  const candidates = [
+    { lat: COORD.lat, lon: COORD.lon, label: 'CENTER' },
+    { lat: COORD.lat - 0.37, lon: COORD.lon + 0.45, label: 'SE_OFFSHORE_FALLBACK' }
+  ];
+
+  for(const pt of candidates){
+    const url=`https://marine-api.open-meteo.com/v1/marine?latitude=${pt.lat.toFixed(3)}&longitude=${pt.lon.toFixed(3)}`+
+              `&hourly=sea_surface_temperature&past_days=31&forecast_days=1&timezone=UTC`;
+    try {
+      const res=await fetch(url);
+      if(!res.ok) continue;
+      const d=await res.json();
+      const hh=(d.hourly&&d.hourly.sea_surface_temperature)||[];
+      const daily=[];
+      for(let i=0;i+24<=hh.length;i+=24){
+        let s=0,n=0;
+        for(let k=i;k<i+24;k++){ if(hh[k]!=null){s+=hh[k];n++;} }
+        if(n>0) daily.push(s/n);
+      }
+      if(daily.length>=5){
+        OCN.sstSeries = daily;
+        OCN.sstSource = pt.label;
+        return;
+      }
+    } catch(e) {
+      console.warn('SST fetch candidate failed:', pt.label, e);
+    }
+  }
+  OCN.sstSeries = null;
+  OCN.sstSource = 'UNAVAILABLE';
+}
+
+// ── core computation: energy field + coastal exposure ─
+function nearestMarine(x,y){
+  const lon=OCN.colLon[x], lat=OCN.rowLat[y];
+  const ix=clamp(Math.floor((lon-OCN.bbox.w)/(OCN.bbox.e-OCN.bbox.w)*3),0,2);
+  const iy=clamp(Math.floor((lat-OCN.bbox.s)/(OCN.bbox.n-OCN.bbox.s)*3),0,2);
+  return OCN.marine[OCN.marineFallback[iy*3+ix]];
+}
+function shoalFactor(depth){ // depth = -elev (m)
+  return depth<15?1.3 : depth<40?1.15 : depth<80?1.0 : 0.85;
+}
+function energyAt(x,y,seaB){ // seaB = seaward bearing (rad); returns kW/m effective
+  const i=y*OCN.W+x, p=nearestMarine(x,y);
+  const aW=Math.max(0,-Math.cos(p.travelW-seaB));
+  const aS=Math.max(0,-Math.cos(p.travelS-seaB));
+  const hb=clamp((0.45-OCN.M1[i])/0.25,0,1);           // headland focusing
+  return (p.Pw*Math.pow(aW,1.5)+p.Ps*Math.pow(aS,1.5))
+         * shoalFactor(-OCN.elev[i]) * (1+0.6*hb);
+}
+
+function ocnCompute(){
+  const {elev,M1,M2,W,H,coast}=OCN;
+  const E_CAP=40; // kW/m ≈ heavy seas (H 3 m, T 9 s)
+
+  // ── energy heatmap (coastal water band) ──
+  const eCnv=document.createElement('canvas'); eCnv.width=W; eCnv.height=H;
+  const eImg=eCnv.getContext('2d').createImageData(W,H); const ed=eImg.data;
+  let peakE=0;
+  for(let y=1;y<H-1;y++) for(let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if(elev[i]>=0) continue;
+    const m2=M2[i];
+    if(m2<0.02||m2>0.97) continue;                     // open sea / deep inland
+    const gE=(M2[i+1]-M2[i-1])/2, gN=-(M2[i+W]-M2[i-W])/2;
+    if(Math.hypot(gE,gN)<1e-5) continue;
+    const seaB=Math.atan2(-gE,-gN);
+    const E=energyAt(x,y,seaB);
+    if(E>peakE) peakE=E;
+    const t=clamp(E/E_CAP,0,1);
+    if(t<0.04) continue;
+    let r,g,b;
+    if(t<0.5){const k=t/0.5; r=0+240*k; g=200-16*k; b=240-240*k;}     // teal → yellow
+    else{const k=(t-0.5)/0.5; r=240; g=184-136*k; b=80*k;}            // yellow → red
+    const prox=4*m2*(1-m2);                            // peaks at coast, fades offshore
+    ed[i*4]=r; ed[i*4+1]=g; ed[i*4+2]=b;
+    ed[i*4+3]=Math.round(clamp((0.10+0.55*t)*prox*1.4,0,0.72)*255);
+  }
+  eCnv.getContext('2d').putImageData(eImg,0,0);
+  OCN.peakE=peakE;
+
+  // ── coastal exposure classes ──
+  const xCnv=document.createElement('canvas'); xCnv.width=W; xCnv.height=H;
+  const xImg=xCnv.getContext('2d').createImageData(W,H); const xd=xImg.data;
+  const COLS={0:[32,144,255],1:[240,184,0],2:[240,48,80],3:[176,96,255]}; // blue/yel/red/purple
+  const cells=[]; let maxScore=0, exposedN=0;
+  for(let k=0;k<coast.length;k++){
+    const i=coast[k], x=i%W, y=(i/W)|0;
+    const gE=(M1[i+1]-M1[i-1])/2, gN=-(M1[i+W]-M1[i-W])/2;
+    const seaB=Math.hypot(gE,gN)>1e-5?Math.atan2(-gE,-gN):Math.atan2(
+      -(M2[i+1]-M2[i-1])/2, (M2[i+W]-M2[i-W])/2);
+    const E=energyAt(x,y,seaB);
+    const score=clamp(E/E_CAP,0,1);
+    const enc=clamp((M2[i]-0.58)/0.22,0,1);
+    let cls = enc>0.5&&score>0.08 ? 3 : score>=0.45 ? 2 : score>=0.18 ? 1 : 0;
+    if(cls>=2) exposedN++;
+    if(score>maxScore) maxScore=score;
+    cells.push({x,y,cls,score,enc});
+    const c=COLS[cls];
+    for(const o of [i,i-1,i+1,i-W,i+W]){               // 1-px dilation for visibility
+      xd[o*4]=c[0]; xd[o*4+1]=c[1]; xd[o*4+2]=c[2]; xd[o*4+3]=235;
+    }
+  }
+  xCnv.getContext('2d').putImageData(xImg,0,0);
+  OCN.maxScore=maxScore;
+  OCN.pctExposed=coast.length?exposedN/coast.length*100:0;
+  OCN.coastCells=cells;
+
+  // overlays — corners built explicitly as [SW, NE].
+  // NOTE: no Math.min/max on longitude — near the antimeridian (e.g. Tonga)
+  // we use CONTINUOUS longitude (east may exceed 180°, which Leaflet accepts);
+  // min/max would collapse a 1° window into a world-spanning rectangle.
+  const z=OCN.z;
+  const south=o_ty2lat(OCN.y0+OCN.H/256,z), north=o_ty2lat(OCN.y0,z);
+  const west =o_tx2lon(OCN.x0,z),           east =o_tx2lon(OCN.x0+OCN.W/256,z); // east > west always
+  const bounds=[[south,west],[north,east]];
+  if(OCN.energyOv) OCN.map.removeLayer(OCN.energyOv);
+  if(OCN.expoOv)   OCN.map.removeLayer(OCN.expoOv);
+  OCN.energyOv=L.imageOverlay(eCnv.toDataURL(),bounds,{interactive:false,pane:'energy'}).addTo(OCN.map);
+  OCN.expoOv  =L.imageOverlay(xCnv.toDataURL(),bounds,{interactive:false,pane:'exposure'}).addTo(OCN.map);
+  ocnApplyToggles();
+}
+
+// ── arrows: wind (gray) / wind-wave (cyan) / swell (violet) ──
+function ocnArrows(){
+  OCN.arrowLayer.clearLayers();
+  const arrow=(rot,col,len,dash,w)=>`<svg width="56" height="56" viewBox="-28 -28 56 56"
+     style="position:absolute;left:0;top:0;transform:rotate(${rot}deg)">
+     <line x1="0" y1="${len*0.55}" x2="0" y2="${-len*0.55}" stroke="${col}" stroke-width="${w}" ${dash?`stroke-dasharray="${dash}"`:''}/>
+     <path d="M0,${-len*0.85} L-4.5,${-len*0.5} L4.5,${-len*0.5} Z" fill="${col}"/></svg>`;
+  OCN.wind && OCN.wind.forEach((wp,k)=>{
+    const m=OCN.marine&&OCN.marine[k].valid?OCN.marine[k].c:null;
+    let html=`<div style="position:relative;width:56px;height:56px">`;
+    html+=arrow((wp.dir+180)%360,'#8aa8bf',13,'',1.4);                        // wind
+    if(m){
+      if((m.wind_wave_height??0)>0.05)
+        html+=arrow(((m.wind_wave_direction??0)+180)%360,'#00c8f0',22,'',2.4); // wind waves
+      if((m.swell_wave_height??0)>0.05)
+        html+=arrow(((m.swell_wave_direction??0)+180)%360,'#b060ff',18,'3 3',2); // swell
+    }
+    html+=`</div><div style="font:8px 'Space Mono',monospace;color:#7fb2d0;text-align:center;margin-top:-10px">`+
+          (m?`${(m.wave_height??0).toFixed(1)}m/${Math.round(m.wave_period??0)}s`:'—')+
+          ` · ${Math.round(wp.spd)}m/s</div>`;
+    L.marker([wp.lat,wp.lon],{icon:L.divIcon({className:'wind-arrow-icon',html,iconSize:[56,66],iconAnchor:[28,28]}),interactive:false})
+      .addTo(OCN.arrowLayer);
+  });
+}
+
+// ── action layer: icons on worst coast clusters ──────
+function ocnActions(){
+  OCN.actionLayer.clearLayers();
+  const B=96;                                          // bucket ≈ 10–14 km
+  const buckets=new Map();
+  OCN.coastCells.forEach(c=>{
+    if(c.cls===0) return;
+    const key=((c.y/B)|0)*1000+((c.x/B)|0);
+    const b=buckets.get(key)||{sx:0,sy:0,n:0,cls:0,score:0};
+    b.sx+=c.x; b.sy+=c.y; b.n++;
+    if(c.cls>b.cls||(c.cls===b.cls&&c.score>b.score)){b.cls=c.cls;b.score=c.score;}
+    buckets.set(key,b);
+  });
+  const DEF={1:['MONITOR','#f0b800'],2:['AVOID LANDING','#f03050'],3:['CLOSE PORT','#b060ff']};
+  const list=[...buckets.values()].sort((a,b)=>b.cls-a.cls||b.score-a.score).slice(0,12);
+  list.forEach(b=>{
+    let [txt,col]=DEF[b.cls];
+    if(b.cls===2&&b.score<0.6) txt='PREPARE';
+    const x=b.sx/b.n, y=b.sy/b.n;
+    const lat=OCN.rowLat[Math.round(y)], lon=OCN.colLon[Math.round(x)];
+    L.marker([lat,lon],{icon:L.divIcon({className:'wind-arrow-icon',
+      html:`<div style="font:bold 9px 'Space Mono',monospace;letter-spacing:.08em;color:#03080e;background:${col};
+            padding:2px 6px;border-radius:2px;white-space:nowrap;box-shadow:0 0 10px ${col}66">${txt}</div>`,
+      iconSize:[90,16],iconAnchor:[45,8]})})
+      .bindPopup(`<b style="color:${col}">${txt}</b><br>exposure ${fmt2(b.score)} · ${b.n} coast cells`)
+      .addTo(OCN.actionLayer);
+  });
+  // area-level action verb
+  const worst=list[0];
+  OCN.action = !worst ? 'MONITOR'
+    : worst.cls===3&&worst.score>0.25 ? 'CLOSE PORT'
+    : worst.cls===2&&worst.score>=0.6 ? 'AVOID LANDING'
+    : worst.cls===2 ? 'PREPARE' : 'MONITOR';
+}
+
+// ── probe ────────────────────────────────────────────
+function ocnProbe(e){
+  if(!OCN.demLoaded) return;
+  const {lat}=e.latlng; let lng=e.latlng.lng;
+  // align clicked lng to the raster's continuous longitude range (antimeridian)
+  const lo=OCN.colLon[0], hi=OCN.colLon[OCN.W-1];
+  while(lng<lo-180) lng+=360;
+  while(lng>hi+180) lng-=360;
+  const z=OCN.z, n=Math.pow(2,z)*256;
+  const gx=(lng+180)/360*n, r=lat*Math.PI/180;
+  const gy=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n;
+  const x=Math.round(gx-OCN.x0*256), y=Math.round(gy-OCN.y0*256);
+  if(x<1||y<1||x>=OCN.W-1||y>=OCN.H-1) return;
+  const i=y*OCN.W+x, el=OCN.elev[i];
+  let body;
+  if(el>=0){ body=`LAND · ELEV ${Math.round(el)} m`; }
+  else{
+    const gE=(OCN.M2[i+1]-OCN.M2[i-1])/2, gN=-(OCN.M2[i+W0()]-OCN.M2[i-W0()])/2;
+    const seaB=Math.atan2(-gE,-gN);
+    const E=OCN.marine?energyAt(x,y,seaB):null;
+    const enc=clamp((OCN.M2[i]-0.58)/0.22,0,1);
+    body=`DEPTH ${Math.round(-el)} m`+
+      (E!==null?`<br>WAVE ENERGY ${E.toFixed(1)} kW/m`:'')+
+      (enc>0.3?`<br><span style="color:#b060ff">ENCLOSED WATER ${fmt2(enc)}</span>`:'');
+  }
+  L.popup().setLatLng(e.latlng).setContent(
+    body+`<br><span style="color:#3a6080">${lat.toFixed(3)}° ${lng.toFixed(3)}°</span>`).openOn(OCN.map);
+}
+function W0(){ return OCN.W; }
+
+// ── layer toggles ────────────────────────────────────
+function ocnApplyToggles(){
+  const on=id=>$(id).checked;
+  OCN.map.getPane('energy').style.display   = on('tg-energy')?'':'none';
+  OCN.map.getPane('exposure').style.display = on('tg-expo')?'':'none';
+  if(on('tg-arrows')){ OCN.map.addLayer(OCN.arrowLayer); } else { OCN.map.removeLayer(OCN.arrowLayer); }
+  if(on('tg-action')){ OCN.map.addLayer(OCN.actionLayer); } else { OCN.map.removeLayer(OCN.actionLayer); }
+}
+
+// ══════════════════════════════════════════════════════
+// ORCHESTRATION + DASHBOARD WIRING (v0.3)
+// ══════════════════════════════════════════════════════
+
+function ocnStats(){
+  $('ocn-maxexpo').textContent = fmt2(OCN.maxScore);
+  $('ocn-maxexpo').style.color = OCN.maxScore>0.45?'var(--crit)':OCN.maxScore>0.18?'var(--warn)':'var(--green)';
+  $('ocn-pct').textContent = OCN.pctExposed.toFixed(0)+'%';
+  $('ocn-peak').textContent = OCN.peakE.toFixed(1)+' kW/m';
+  // wind vs wave misalignment — the LoPAS translation gap
+  let mis='—';
+  if(OCN.wind&&OCN.marine){
+    const w=OCN.wind[4], m=OCN.marine[OCN.marineFallback[4]].c;
+    if(m.wave_direction!=null){
+      let d=Math.abs(w.dir-m.wave_direction)%360; if(d>180)d=360-d;
+      mis=Math.round(d)+'°'; OCN.misalign=d;
+      $('ocn-mis').style.color = d>60?'var(--warn)':'var(--textdim)';
+    }
+  }
+  $('ocn-mis').textContent=mis;
+  $('ocn-action').textContent=OCN.action;
+  const ac={'MONITOR':'var(--warn)','PREPARE':'var(--warn)','AVOID LANDING':'var(--crit)','CLOSE PORT':'#b060ff'}[OCN.action];
+  $('ocn-action').style.color=ac;
+
+  // drive the action zone (bottom = why, top = where; verb links them)
+  const verb=$('action-verb'), sub=$('action-sub');
+  if(verb){
+    verb.textContent=OCN.action; verb.style.color=ac;
+    verb.style.textShadow=`0 0 40px ${ac==='#b060ff'?'rgba(176,96,255,.3)':ac.includes('crit')?'rgba(240,48,80,.3)':'rgba(240,184,0,.25)'}`;
+    document.querySelector('.action-zone').style.borderTopColor=ac;
+    sub.textContent={
+      'MONITOR':'Coastal exposure low–moderate. Maintain observation cycle.',
+      'PREPARE':'Exposed coast segments detected. Ready small-craft and shoreline protocols.',
+      'AVOID LANDING':'High wave-energy convergence on exposed coast. Suspend landings on flagged segments.',
+      'CLOSE PORT':'Energy entering enclosed harbor water — reflection/amplification risk. Consider port closure.'
+    }[OCN.action];
+  }
+  // SCI live composite
+  if(OCN.marine&&OCN.wind){
+    let hs=0,ws=0;
+    OCN.marine.forEach(p=>{if(p.valid&&p.c.wave_height>hs)hs=p.c.wave_height;});
+    OCN.wind.forEach(p=>{if(p.spd>ws)ws=p.spd;});
+    const sci=clamp(0.45*hs/5+0.30*ws/25+0.25*OCN.maxScore,0,1);
+    const el=$('sci-val'); if(el){el.textContent=fmt2(sci);
+      el.style.color=sci>0.6?'var(--crit)':sci>0.35?'var(--warn)':'var(--green)';}
+  }
+}
+
+function ocnSST(){
+  if(!OCN.sstSeries) return;
+  const s=OCN.sstSeries, mean=s.reduce((a,b)=>a+b,0)/s.length;
+  const anom=s[s.length-1]-mean;
+  const big=$('sst-big');
+  if(big){ big.textContent=(anom>=0?'+':'')+anom.toFixed(1);
+    big.style.color=anom>1.0?'var(--crit)':anom>0.4?'var(--warn)':'var(--accent)'; }
+  const loc=$('sst-local'); if(loc) loc.textContent=s[s.length-1].toFixed(1)+'°C';
+  drawSparkSeries(s.map(v=>v-mean));
+  const foot=$('spark-foot');
+  if(foot){
+    const now=Date.now(), fmt=t=>{const d=new Date(t);return `${d.toLocaleString('en',{month:'short'})} ${d.getDate()}`;};
+    foot.innerHTML=[4,3,2,1,0].map(k=>`<span>${fmt(now-k*7*864e5)}</span>`).join('');
+  }
+}
+
+function drawSparkSeries(data){
+  const c=$('spark'); if(!c) return;
+  const dpr=window.devicePixelRatio||1;
+  c.width=c.offsetWidth*dpr; c.height=c.offsetHeight*dpr;
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr);
+  const W=c.offsetWidth,H=c.offsetHeight;
+  const mn=Math.min(...data,-0.1)-0.05, mx=Math.max(...data,0.3)+0.05;
+  const py=v=>H-((v-mn)/(mx-mn))*H*.82-H*.06;
+  const pts=data.map((v,i)=>({x:(i/(data.length-1))*W,y:py(v)}));
+  ctx.beginPath();ctx.moveTo(0,py(0));ctx.lineTo(W,py(0));
+  ctx.strokeStyle='rgba(58,96,128,.5)';ctx.lineWidth=1;ctx.setLineDash([3,4]);ctx.stroke();ctx.setLineDash([]);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'rgba(0,200,240,.2)');g.addColorStop(1,'rgba(0,200,240,0)');
+  ctx.beginPath();ctx.moveTo(pts[0].x,H);pts.forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.lineTo(pts[pts.length-1].x,H);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle='#00c8f0';ctx.lineWidth=1.5;ctx.stroke();
+  const last=pts[pts.length-1];
+  ctx.beginPath();ctx.arc(last.x,last.y,4,0,Math.PI*2);ctx.fillStyle='#00c8f0';ctx.fill();
+}
+
+function ocnSources(){
+  const tb=$('src-tbody'); if(!tb) return;
+  const dot=s=>s==='OK'?'sdot-ok':s==='ERROR'?'sdot-err':'sdot-lag';
+  const col=s=>s==='OK'?'var(--green)':s==='ERROR'?'var(--crit)':'var(--textdim)';
+  tb.innerHTML=`
+    <tr><td><span class="sdot ${dot(window.OCN_MARINE)}"></span>Open-Meteo Marine</td>
+      <td>Wave · swell · SST</td><td style="color:var(--accent)">LIVE</td>
+      <td style="color:${col(window.OCN_MARINE)}">${window.OCN_MARINE}</td></tr>
+    <tr><td><span class="sdot ${dot(window.OCN_WIND)}"></span>Open-Meteo Forecast</td>
+      <td>Wind 10 m grid</td><td style="color:var(--accent)">LIVE</td>
+      <td style="color:${col(window.OCN_WIND)}">${window.OCN_WIND}</td></tr>
+    <tr><td><span class="sdot ${dot(window.OCN_TERRAIN)}"></span>AWS Terrain Tiles</td>
+      <td>Bathymetry · coastline</td><td style="color:var(--textdim)">STATIC</td>
+      <td style="color:${col(window.OCN_TERRAIN)}">${window.OCN_TERRAIN}</td></tr>
+    <tr><td><span class="sdot sdot-lag"></span>TAO Buoy / PDH-CliDE</td>
+      <td>Local obs</td><td style="color:var(--green)">LOCAL</td>
+      <td style="color:var(--textdim)">PLANNED</td></tr>
+    <tr><td><span class="sdot sdot-lag"></span>CMEMS</td>
+      <td>Current · SST grid</td><td style="color:var(--accent)">GLOBAL</td>
+      <td style="color:var(--textdim)">PLANNED</td></tr>`;
+}
+
+// ── main flow ────────────────────────────────────────
+async function ocnLoadAndCompute(){
+  ocnInitMap();
+  $('ocn-btn').disabled=true;
+  try{
+    $('ocn-status').textContent='Fetching wave + wind data …';
+    const results=await Promise.allSettled([ocnFetchMarine(),ocnFetchWind(),ocnFetchSST()]);
+    if(results[0].status==='rejected'){
+      window.OCN_MARINE='ERROR'; console.error(results[0].reason);
+      $('ocn-status').textContent='Marine API unreachable (network/CORS) — layers need wave data. '+
+        'If CORS: route via a tiny proxy (roadmap).';
+      ocnSources(); $('ocn-btn').disabled=false; return;
+    }
+    if(results[1].status==='rejected'){ window.OCN_WIND='ERROR'; }
+    const ok=await ocnLoadDEM();
+    ocnSources();
+    if(!ok){ $('ocn-btn').disabled=false; return; }
+    $('ocn-status').textContent='Computing wave energy + coastal exposure …';
+    await new Promise(r=>setTimeout(r,20));
+    ocnCompute();
+    ocnArrows();
+    ocnActions();
+    ocnStats();
+    ocnSST();
+    ocnUserReadout();
+    $('ocn-status').textContent=`Layers live — ${OCN.coast.length.toLocaleString()} coast cells · click map to probe.`;
+    $('ocn-btn').textContent='↻ RECOMPUTE (CURRENT SEA STATE)';
+  }catch(e){
+    console.error(e);
+    $('ocn-status').textContent='Compute error — see console.';
+  }
+  $('ocn-btn').disabled=false;
+}
+
+function ocnUserReadout(){
+  if(!OCN.userMarker||!OCN.demLoaded||!OCN.coastCells) return;
+  const ll=OCN.userMarker.getLatLng();
+  // nearest coast cell within ~3 km
+  let best=null,bd=1e9;
+  const z=OCN.z,n=Math.pow(2,z)*256;
+  const gx=(ll.lng+180)/360*n, r=ll.lat*Math.PI/180;
+  const gy=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n;
+  const ux=gx-OCN.x0*256, uy=gy-OCN.y0*256;
+  OCN.coastCells.forEach(c=>{const d=(c.x-ux)**2+(c.y-uy)**2; if(d<bd){bd=d;best=c;}});
+  if(!best||Math.sqrt(bd)>25) return;
+  const NAMES=['SHELTERED','CAUTION','EXPOSED','ENCLOSED / REFLECTIVE'];
+  const COLS=['#2090ff','#f0b800','#f03050','#b060ff'];
+  OCN.userMarker.bindPopup(
+    `<b style="color:${COLS[best.cls]}">NEAREST COAST: ${NAMES[best.cls]}</b><br>`+
+    `exposure ${fmt2(best.score)} · ~${(Math.sqrt(bd)*o_res(ll.lat)/1000).toFixed(1)} km away`).openPopup();
+}
+
+function setAnalysisCenter(lat,lon,label){
+  lat=clamp(lat,-65,65); lon=((lon+540)%360)-180;
+  COORD={lat,lon}; ocnSetBbox();
+  OCN.demLoaded=false; OCN.demLoading=false; OCN.elev=null; OCN.coastCells=null;
+  OCN.marine=null; window.OCN_MARINE='PENDING'; window.OCN_TERRAIN='PENDING';
+  if(OCN.energyOv){OCN.map.removeLayer(OCN.energyOv);OCN.energyOv=null;}
+  if(OCN.expoOv){OCN.map.removeLayer(OCN.expoOv);OCN.expoOv=null;}
+  OCN.arrowLayer.clearLayers(); OCN.actionLayer.clearLayers();
+  OCN.rect.setBounds([[OCN.bbox.s,OCN.bbox.w],[OCN.bbox.n,OCN.bbox.e]]);
+  OCN.map.setView([lat,lon],9);
+  $('hdr-coord').textContent=
+    `${Math.abs(lat).toFixed(2)}°${lat>=0?'N':'S'}  ${Math.abs(lon).toFixed(2)}°${lon>=0?'E':'W'} — ${label||'Custom Node'}`;
+  $('ocn-btn').textContent='🌊 LOAD OCEAN + COMPUTE';
+  ['ocn-maxexpo','ocn-pct','ocn-peak','ocn-mis','ocn-action'].forEach(id=>$(id).textContent='—');
+  ocnLoadAndCompute();
+}
+function useMapCenter(){ ocnInitMap(); const c=OCN.map.getCenter(); setAnalysisCenter(c.lat,c.lng,'Map Center Node'); }
+function useMyPosition(){
+  ocnInitMap();
+  if(!navigator.geolocation){ $('ocn-status').textContent='Geolocation not supported.'; return; }
+  $('ocn-status').textContent='Requesting position … (allow location access)';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const {latitude:lat,longitude:lon,accuracy}=pos.coords;
+    if(OCN.userMarker) OCN.map.removeLayer(OCN.userMarker);
+    if(OCN.userCircle) OCN.map.removeLayer(OCN.userCircle);
+    OCN.userMarker=L.marker([lat,lon]).addTo(OCN.map);
+    OCN.userCircle=L.circle([lat,lon],{radius:Math.max(accuracy,20),color:'#00f09a',weight:1,fillColor:'#00f09a',fillOpacity:.08}).addTo(OCN.map);
+    setAnalysisCenter(lat,lon,'My Position Node');
+  },err=>{
+    $('ocn-status').textContent='Position unavailable: '+(err.code===1?'permission denied — HTTPS + allow required':err.message);
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+}
+
+// boot
+window.addEventListener('load',()=>{ ocnInitMap(); ocnSources(); });
+
+</script>
+</body>
+</html>
