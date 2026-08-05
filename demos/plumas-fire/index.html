@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LoPAS Fire Translator — Plumas County Node</title>
+<title>LoPAS Fire Translator — Suwa District Node</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;500;600;700;900&display=swap');
 
@@ -285,11 +285,11 @@ footer {
 <header>
   <div class="logo">
     <div class="sys">LoPAS / Fire Translator v0.1 — Live Node</div>
-    <div class="name">PLUMAS OBSERVER</div>
+    <div class="name">SUWA OBSERVER</div>
   </div>
   <div class="header-right">
     <span class="dot dot-live" id="status-dot"></span><span id="status-label">LIVE</span> &nbsp;|&nbsp;
-    <span class="coord">40.0°N &nbsp;121.0°W — Plumas County, CA</span><br>
+    <span class="coord">36.0°N &nbsp;138.1°E — Suwa District, Nagano</span><br>
     <span id="ts">—</span><br>
     <span id="key-indicator">—</span> &nbsp;|&nbsp;
     <button id="refresh-btn" onclick="init()">↻ REFRESH</button>
@@ -472,15 +472,15 @@ footer {
 </div><!-- /body-grid -->
 
 <footer>
-  <span>LoPAS Fire Translator v0.1 — Plumas County Node — Live data via NASA FIRMS + Open-Meteo</span>
+  <span>LoPAS Fire Translator v0.1 — Suwa District Node — Live data via NASA FIRMS + Open-Meteo</span>
   <span>PFS v0.3 · LPTM v2 · Fire Schema v0.1</span>
 </footer>
 </div><!-- /shell -->
 
 <script>
 // ── CONFIG ──────────────────────────────────────────
-const COORD = { lat: 40.0, lon: -121.0 };   // Plumas County center
-const BBOX  = '-122.0,39.0,-120.0,41.0';    // west,south,east,north
+const COORD = { lat: 36.0, lon: 138.1 };   // Plumas County center
+const BBOX  = '137.6,35.7,138.6,36.3';    // west,south,east,north
 const RADIUS_KM = 50;
 let MAP_KEY = '';
 let firmsMode = false;
@@ -593,7 +593,7 @@ async function fetchWeather() {
     `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,` +
     `precipitation,vapour_pressure_deficit` +
     `&daily=temperature_2m_max,precipitation_sum,wind_speed_10m_max` +
-    `&timezone=America%2FLos_Angeles&forecast_days=3`;
+    `&timezone=Asia%2FTokyo&forecast_days=3`;
   const res = await fetch(url);
   if(!res.ok) throw new Error(`Weather HTTP ${res.status}`);
   return res.json();
